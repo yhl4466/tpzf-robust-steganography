@@ -1,0 +1,28 @@
+﻿==========================================================================================
+verify-carrier-generator：载体图生成器验收
+==========================================================================================
+[PASS] AC1 CarrierGenerator 契约：generate 返回 {imageData, seed, style, stats{avgMargin,minMargin,texturedRatio}}；styles() 返回 5 项含四字段
+        generate 返回字段齐全；stats={avgMargin:17.98, minMargin:15.18, texturedRatio:100.0%}；styles()=5 项 [grass, rock, cloud, wood, abstract]
+[PASS] AC2 五种风格（grass/rock/cloud/wood/abstract）都能生成；未知风格抛 RangeError 并列出可选值
+        grass（均色 81，minMargin 15.0）；rock（均色 108，minMargin 15.0）；cloud（均色 148，minMargin 15.0）；wood（均色 95，minMargin 15.0）；abstract（均色 123，minMargin 15.0）；未知风格 → RangeError：CarrierGenerator.generate: 未知风格 "no-such-style"，可选：grass / r
+[PASS] AC3 生成尺寸与请求一致（非 8 倍数向下对齐到 8，data 长度 = w×h×4）
+        1024×1024 → 1024×1024；512×256 → 512×256；1000×700 → 1000×696；64×64 → 64×64
+[PASS] AC4 相同种子生成完全相同的结果（逐字节一致，可复现）
+        种子 20240925 两次生成：262144 字节中不同 0 个
+[PASS] AC5 不同种子生成不同的结果（差异字节占比应 > 50%）
+        种子 20240925 vs 20240926：73.8% 的字节不同
+[PASS] AC6 生成的图嵌入 32×32 秘密图：零遮蔽存活率 ≥ 95%，遮蔽 25% 与 40% 均能还原
+        K=35, N=70；零遮蔽 70/70 = 100.0%；遮蔽 25%（实测 25.0%）→ 53/70 success=true；遮蔽 40%（实测 39.1%）→ 42/70 success=true
+[PASS] AC10 嵌入后提取的载荷与嵌入时逐字节一致（CRC32 相同）
+        嵌入 1372 字节（CRC32 996330755）；提取 1372 字节（CRC32 996330755）
+[PASS] AC7 质量自检达标：8×8 块 margin ≥ 12 的占比 ≥ 95%、纹理块占比 ≥ 80%、最小 margin ≥ 12（13 组配置）
+        grass 1024×1024: minMargin=15.0, margin≥12 占比=100.0%, 纹理块=100.0%；rock 1024×1024: minMargin=15.0, margin≥12 占比=100.0%, 纹理块=100.0%；cloud 1024×1024: minMargin=15.0, margin≥12 占比=100.0%, 纹理块=100.0%；wood 1024×1024: minMargin=15.0, margin≥12 占比=100.0%, 纹理块=100.0%；abstract 1024×1024: minMargin=15.0, margin≥12 占比=100.0%, 纹理块=100.0%（重试 1 次）；grass 512×512: minMargin=15.0, margin≥12 占比=100.0%, 纹理块=100.0%；rock 2048×2048: minMargin=15.0, margin≥12 占比=100.0%, 纹理块=100.0%；wood 1024×576: minMargin=15.0, margin≥12 占比=100.0%, 纹理块=100.0%
+[PASS] AC8 性能：1024×1024 ≤ 800ms、2048×2048 ≤ 3000ms
+        1024² = 379 ms（要求 ≤ 800）；2048² = 1730 ms（要求 ≤ 3000）
+[PASS] AC9 视觉规律性：无 8×8 网格线（边界/内部差分比 < 1.25），且 lag=8/16/32/64 无突出自相关峰（< 1.6× 邻域均值）
+        块边界/内部相邻差分比 = 1.018；自相关 lag[8,16,32,64] = [0.977, 0.921, 0.755, 0.307]，邻域 lag 均值 = 0.958（比值 1.02×）
+
+==========================================================================================
+总计 10 项：通过 10，失败 0
+验收标准：AC1=PASS  AC2=PASS  AC3=PASS  AC4=PASS  AC5=PASS  AC6=PASS  AC10=PASS  AC7=PASS  AC8=PASS  AC9=PASS
+==========================================================================================

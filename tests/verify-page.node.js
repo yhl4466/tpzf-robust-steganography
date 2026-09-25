@@ -33,6 +33,8 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const CORE_SCRIPTS = ['js/image-utils.js', 'js/dct-stego.js', 'js/packet.js', 'js/raptorq.js',
   'js/geo-calibration.js', 'js/stego-core.js'];
+// 嵌入页额外引入载体图生成器（放在核心库之后：它只用 ImageData/DOM，不依赖内核）
+const EMBED_SCRIPTS = CORE_SCRIPTS.concat(['js/carrier-generator.js']);
 
 // 面向大众用户的页面：可见文本里不得出现这些术语（tech.html 例外，它专门讲原理）
 const TERM_BLACKLIST = ['K_effective', 'symbolSize', 'varianceThreshold', 'margin', 'RaptorQ',
@@ -259,11 +261,12 @@ function auditBareCalls(src, extraKnown) {
 
 // 载入库，用于"页面调用签名 vs 库导出"的脚本比对
 require('./dom-shim.js');
-CORE_SCRIPTS.concat(['js/test-suite.js']).forEach((f) => require(path.join(ROOT, f)));
+CORE_SCRIPTS.concat(['js/carrier-generator.js', 'js/test-suite.js']).forEach((f) => require(path.join(ROOT, f)));
 const StegoCore = global.StegoCore;
 const ImageUtils = global.ImageUtils;
 const TestSuite = global.TestSuite;
-const SIGNATURE_LIBS = { StegoCore: StegoCore, ImageUtils: ImageUtils, TestSuite: TestSuite };
+const SIGNATURE_LIBS = { StegoCore: StegoCore, ImageUtils: ImageUtils, TestSuite: TestSuite,
+  CarrierGenerator: global.CarrierGenerator };
 
 const results = [];
 let failures = 0;
@@ -321,7 +324,10 @@ function signatureReport(html, ns, lib) {
   for (const c of calls) {
     if (typeof lib[c.fn] !== 'function') { unknown.push(c.fn); continue; }
     const max = lib[c.fn].length;
-    if (c.argc < 1 || c.argc > max) arityBad.push(`${c.fn}(${c.argc} 个实参, 上限 ${max})`);
+    // 实参个数下限取 min(1, 形参个数)：无参函数（如 CarrierGenerator.styles()）
+    // 本来就不该被要求传参，否则"调用 0 个实参"会被误判为签名不符。
+    const min = Math.min(1, max);
+    if (c.argc < min || c.argc > max) arityBad.push(`${c.fn}(${c.argc} 个实参, 允许 ${min}~${max})`);
     seen.set(`${c.fn}/${c.argc}`, (seen.get(`${c.fn}/${c.argc}`) || 0) + 1);
   }
   const list = [...seen.entries()].map(([k, v]) => `${k}×${v}`).join(', ');
@@ -384,14 +390,16 @@ const PAGES = [
   },
   {
     file: 'embed.html',
-    sig: ['StegoCore', 'ImageUtils'],
+    sig: ['StegoCore', 'ImageUtils', 'CarrierGenerator'],
+    scripts: EMBED_SCRIPTS,
     links: ['index.html', 'embed.html', 'extract.html', 'tech.html'],
     ids: ['carrierFile', 'carrierHint', 'carrierThumb', 'carrierMeta',
       'secretFile', 'secretHint', 'secretThumb', 'secretMeta', 'secretNote',
       'readyText', 'embedBtn', 'progressBar', 'statusText',
       'resultSummary', 'shareTip', 'stegoThumb', 'stegoHint', 'downloadStegoBtn',
-      'advancedPanel', 'redundancy', 'scaleMode', 'advancedDesc',
-      'simResult', 'simThumb', 'simHint'],
+      'advancedPanel', 'redundancy', 'scaleMode', 'advancedDesc', 'channelPanel',
+      'genPanel', 'genStyle', 'genSize', 'genShuffleBtn', 'genUseBtn', 'genHint',
+      'genThumb', 'genQuality'],
     noTerms: true,
     checks: [
       {
@@ -473,6 +481,29 @@ const PAGES = [
           /class="simbtn"[^>]*disabled/.test(h) && /id="simResult"/.test(h) && /id="simThumb"/.test(h),
         detail: (h) => `成功文案=${/提取成功，用时 /.test(h)}；失败文案=${/个数据块（不够还原）/.test(h)}；` +
           `按钮初始 disabled=${/class="simbtn"[^>]*disabled/.test(h)}；测试期间禁用=${/setSimButtons\(true\)/.test(h)}`
+      },
+      {
+        name: '自动生成载体图：折叠面板 + 风格/尺寸选择 + 换一张/用这张 + 预览与质量评估',
+        fn: (h) => /<details id="genPanel">/.test(h) && /让工具帮你生成一张/.test(h) &&
+          /id="genStyle"/.test(h) && /id="genSize"/.test(h) &&
+          /id="genShuffleBtn"[^>]*>🎲 换一张/.test(h) && /id="genUseBtn"[^>]*>✅ 用这张/.test(h) &&
+          /id="genThumb"/.test(h) && /id="genQuality"/.test(h) &&
+          /1024x1024/.test(h) && /2048x2048/.test(h) && /1024x576/.test(h),
+        detail: (h) => `折叠面板=${/<details id="genPanel">/.test(h)}；风格/尺寸选择=${/id="genStyle"/.test(h)}/${/id="genSize"/.test(h)}；` +
+          `换一张/用这张=${/id="genShuffleBtn"[^>]*>🎲 换一张/.test(h)}/${/id="genUseBtn"[^>]*>✅ 用这张/.test(h)}；` +
+          `预览与评估=${/id="genThumb"/.test(h)}/${/id="genQuality"/.test(h)}`
+      },
+      {
+        name: '生成器引入与调用：carrier-generator.js 在核心库之后加载，且生成图走同一条 embedSecret 流程',
+        fn: (h) => /js\/stego-core\.js"><\/script>\s*<script src="js\/carrier-generator\.js"><\/script>/.test(h) &&
+          /CarrierGenerator\.generate\(/.test(h) &&
+          /state\.carrier = genState\.result\.imageData/.test(h) &&
+          /refreshReady\(\)/.test(h) &&
+          /analyzeCapacity/.test(h),
+        detail: (h) => `脚本顺序=${/js\/stego-core\.js"><\/script>\s*<script src="js\/carrier-generator\.js"><\/script>/.test(h)}；` +
+          `调用 generate=${/CarrierGenerator\.generate\(/.test(h)}；` +
+          `填入 state.carrier=${/state\.carrier = genState\.result\.imageData/.test(h)}；` +
+          `复用容量分析=${/analyzeCapacity/.test(h)}`
       },
       {
         name: '底部"了解技术原理"链接指向 tech.html',
@@ -1070,7 +1101,7 @@ for (const page of PAGES) {
 
 {
   const libs = ['js/image-utils.js', 'js/dct-stego.js', 'js/packet.js', 'js/raptorq.js',
-    'js/geo-calibration.js', 'js/stego-core.js', 'js/test-suite.js'];
+    'js/geo-calibration.js', 'js/stego-core.js', 'js/carrier-generator.js', 'js/test-suite.js'];
   // 允许的跨文件名字：确实由别处挂到全局、且以裸名被调用的（当前为空）
   const CROSS_FILE_ALLOW = new Set();
   const rows = [];
@@ -1083,6 +1114,29 @@ for (const page of PAGES) {
   check(`库文件（${libs.length} 个）内无未定义的裸函数调用`, bad === 0,
     bad === 0 ? `逐个审计：${libs.map((f) => f.replace('js/', '')).join('、')} 全部通过`
       : `可疑文件 ${bad} 个 → ${rows.join('；')}`);
+}
+
+// ============================================================
+// 库文件源码约束：无 ESM、无 require、无外部 URL（保证 file:// 可直接打开）
+// ============================================================
+{
+  const libs = ['js/image-utils.js', 'js/dct-stego.js', 'js/packet.js', 'js/raptorq.js',
+    'js/geo-calibration.js', 'js/stego-core.js', 'js/carrier-generator.js', 'js/test-suite.js'];
+  const rows = [];
+  let bad = 0;
+  for (const f of libs) {
+    const code = fs.readFileSync(path.join(ROOT, f), 'utf8');
+    const esm = (code.match(/(^|\n)\s*(import|export)[\s({]/g) || []).length;
+    const dyn = (code.match(/\bimport\s*\(/g) || []).length;
+    const req = (code.match(/\brequire\s*\(/g) || []).length;
+    const urls = (code.match(/https?:\/\//g) || []).length;
+    if (esm || dyn || req || urls) {
+      bad++;
+      rows.push(`${f}: esm=${esm} 动态import=${dyn} require=${req} URL=${urls}`);
+    }
+  }
+  check(`库文件（${libs.length} 个）无 ESM / 无 require / 无外部 URL`, bad === 0,
+    bad === 0 ? `${libs.length} 个库文件全部满足零依赖约束` : rows.join('；'));
 }
 
 // ============================================================

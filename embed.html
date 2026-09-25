@@ -112,6 +112,31 @@
         <div class="hint" id="carrierHint">尚未选择</div>
         <canvas id="carrierThumb" class="thumb hidden"></canvas>
         <div class="meta" id="carrierMeta"></div>
+
+        <!-- 自动生成载体图：给"不会挑图"的用户一个一键选项 -->
+        <details id="genPanel">
+          <summary>或者，让工具帮你生成一张</summary>
+          <p class="tip">不用自己找图。工具会用分形噪声生成一张纹理充足、不带任何压缩历史的图片，抗损坏能力比随手找的风光照更稳。</p>
+          <div class="opt">
+            <label for="genStyle">风格</label>
+            <select id="genStyle"></select>
+          </div>
+          <div class="opt">
+            <label for="genSize">尺寸</label>
+            <select id="genSize">
+              <option value="1024x1024" selected>1024 × 1024（推荐，约 1 秒）</option>
+              <option value="2048x2048">2048 × 2048（更清晰，约 2 秒）</option>
+              <option value="1024x576">1024 × 576（横构图，约 0.6 秒）</option>
+            </select>
+          </div>
+          <div class="simrow">
+            <button type="button" id="genShuffleBtn">🎲 换一张</button>
+            <button type="button" id="genUseBtn" disabled>✅ 用这张</button>
+          </div>
+          <div class="hint" id="genHint">点"🎲 换一张"开始生成</div>
+          <canvas id="genThumb" class="thumb hidden"></canvas>
+          <div class="status" id="genQuality"></div>
+        </details>
       </div>
       <div class="grow">
         <label class="pick" for="secretFile">
@@ -224,6 +249,7 @@
 <script src="js/raptorq.js"></script>
 <script src="js/geo-calibration.js"></script>
 <script src="js/stego-core.js"></script>
+<script src="js/carrier-generator.js"></script>
 <script>
 (function () {
   'use strict';
@@ -429,6 +455,131 @@
       el.textContent = '秘密图偏大，将自动缩小至 ' + r.plan.width + '×' + r.plan.height + skipNote;
       setStatus('嵌入时会自动把秘密图缩小后重试。');
     }
+  }
+
+  // ---------- 自动生成载体图 ----------
+  //
+  // 生成的图和上传的图在后续流程里完全等价：两者都只是 state.carrier 里的一份
+  // ImageData，最终交给同一个 StegoCore.embedSecret。这里唯一多做的一件事是
+  // 把生成器的质量自检结果翻译成一句用户能看懂的话（能承载多少 KB）。
+  var genState = { result: null, seed: 0, busy: false };
+
+  /** 填充风格下拉框（风格列表来自 CarrierGenerator.styles()） */
+  (function initGenStyles() {
+    var sel = $('genStyle');
+    var CG = window.CarrierGenerator;
+    if (!sel || !CG || typeof CG.styles !== 'function') return;
+    var list = CG.styles();
+    for (var i = 0; i < list.length; i++) {
+      var opt = document.createElement('option');
+      opt.value = list[i].id;
+      opt.textContent = list[i].name + ' —— ' + list[i].description;
+      if (i === 0) opt.selected = true;
+      sel.appendChild(opt);
+    }
+  })();
+
+  function genSize() {
+    var v = $('genSize').value.split('x');
+    return { width: parseInt(v[0], 10), height: parseInt(v[1], 10) };
+  }
+
+  /** 把生成图缩到 300px 宽以内再画进预览画布（避免在页面上放一张 2048² 的画布） */
+  function drawGenPreview(imageData) {
+    var cv = $('genThumb');
+    var longSide = Math.max(imageData.width, imageData.height);
+    var target = 300;
+    var src = makeCanvasFromImageData(imageData);
+    var scaled = longSide > target ? window.ImageUtils.resizeImage(src, target) : src;
+    cv.width = scaled.width;
+    cv.height = scaled.height;
+    var ctx = cv.getContext('2d');
+    if (typeof ctx.drawImage === 'function') ctx.drawImage(scaled, 0, 0);
+    else drawThumb(cv, imageData);
+    cv.classList.remove('hidden');
+  }
+
+  function describeGenQuality(result) {
+    var cap = window.StegoCore.analyzeCapacity(result.imageData, 0, {
+      redundancy: currentRedundancy()
+    });
+    var bytes = cap.maxSafeSecretBytes > 0 ? cap.maxSafeSecretBytes : cap.maxSecretBytes;
+    var kb = bytes / 1024;
+    var s = result.stats;
+    var label = (CONST.REDUNDANCY_LABEL && CONST.REDUNDANCY_LABEL[currentRedundancy()]) || currentRedundancy();
+    var head = (s.minMargin >= 12 && s.blockMarginOkRatio >= 0.95)
+      ? '纹理充足'
+      : '纹理偏弱（最小裕量 ' + s.minMargin.toFixed(1) + '，建议换一张或改用其他风格）';
+    return head + '：最小裕量 ' + s.minMargin.toFixed(1) + '，安全区域 ' + cap.safeTiles + ' 块，' +
+      '可承载约 ' + kb.toFixed(1) + ' KB 数据（' + label + '）；生成用时 ' + s.elapsedMs + ' ms' +
+      (s.retries ? '，自动微调 ' + s.retries + ' 次' : '');
+  }
+
+  function generateCarrier(useNewSeed) {
+    if (!window.CarrierGenerator || genState.busy) return;
+    genState.busy = true;
+    $('genShuffleBtn').disabled = true;
+    $('genUseBtn').disabled = true;
+    $('genHint').classList.remove('hidden');
+    $('genHint').textContent = '正在生成…';
+    $('genQuality').textContent = '';
+    // 让浏览器先把"正在生成"画出来，再跑这段同步计算
+    setTimeout(function () {
+      try {
+        var size = genSize();
+        genState.seed = useNewSeed || !genState.seed
+          ? ((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0)
+          : genState.seed;
+        var result = window.CarrierGenerator.generate({
+          width: size.width,
+          height: size.height,
+          style: $('genStyle').value,
+          seed: genState.seed
+        });
+        genState.result = result;
+        genState.styleName = $('genStyle').options[$('genStyle').selectedIndex].text.split(' —— ')[0];
+        drawGenPreview(result.imageData);
+        $('genHint').classList.add('hidden');
+        var weak = result.stats.minMargin < 12 || result.stats.blockMarginOkRatio < 0.95;
+        $('genQuality').className = 'status ' + (weak ? 'err' : 'ok');
+        $('genQuality').textContent = describeGenQuality(result);
+        $('genUseBtn').disabled = false;
+      } catch (err) {
+        $('genQuality').className = 'status err';
+        $('genQuality').textContent = '生成失败：' + err.message;
+      } finally {
+        genState.busy = false;
+        $('genShuffleBtn').disabled = false;
+      }
+    }, 20);
+  }
+
+  /** "用这张"：把生成图当载体填入，流程与手动上传完全一致 */
+  function useGeneratedCarrier() {
+    if (!genState.result) return;
+    state.carrier = genState.result.imageData;
+    state.textured = null;                       // 可承载量重新计算
+    drawThumb($('carrierThumb'), state.carrier);
+    $('carrierThumb').classList.remove('hidden');
+    $('carrierHint').classList.add('hidden');
+    var s = genState.result.stats;
+    $('carrierMeta').textContent = '自动生成 ｜ ' + s.width + ' × ' + s.height + ' 像素 ｜ 风格：' +
+      (genState.styleName || genState.result.style) + ' ｜ 种子 ' + genState.result.seed;
+    refreshReady();
+    setStatus('已使用生成的载体图，接着选一张秘密图即可。', 'ok');
+  }
+
+  if (window.CarrierGenerator) {
+    $('genShuffleBtn').addEventListener('click', function () { generateCarrier(true); });
+    $('genUseBtn').addEventListener('click', useGeneratedCarrier);
+    $('genStyle').addEventListener('change', function () { generateCarrier(false); });
+    $('genSize').addEventListener('change', function () { generateCarrier(false); });
+    // 第一次展开面板时自动生成一张，省掉一次点击
+    $('genPanel').addEventListener('toggle', function () {
+      if ($('genPanel').open && !genState.result) generateCarrier(true);
+    });
+  } else {
+    $('genHint').textContent = '生成器未加载：请确认 js/carrier-generator.js 与 embed.html 在同一目录。';
   }
 
   // ---------- 载体图 ----------
