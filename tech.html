@@ -4,8 +4,8 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%234c8dff'/><path d='M16 7a5 5 0 0 0-5 5v3h-1.5v10h13V15H21v-3a5 5 0 0 0-5-5zm0 3a2 2 0 0 1 2 2v3h-4v-3a2 2 0 0 1 2-2z' fill='%23fff'/></svg>">
-<title>技术报告 · TPZF 工具箱 —— 面向社交平台退化信道的鲁棒图像隐写方法</title>
-<meta name="description" content="TPZF 工具箱技术报告：DCT 差分符号调制、自适应裕量、系统化 Reed-Solomon 纠删码、双导频几何标定与网格相位重同步，以及全部实测数字与信道要求。">
+<title>技术报告 · RobustStego —— 面向社交平台退化信道的鲁棒图像隐写方法</title>
+<meta name="description" content="RobustStego 技术报告：DCT 差分符号调制、自适应裕量、系统化 Reed-Solomon 纠删码、双导频几何标定与网格相位重同步，以及全部实测数字与信道要求。">
 <style>
   :root {
     --bg: #0f1319; --panel: #171d26; --line: #2a3341; --text: #e6e9ef;
@@ -112,7 +112,7 @@
 
 <header class="nav">
   <div class="nav-inner">
-    <div class="brand">图片抗干扰<span>隐写</span></div>
+    <div class="brand">Robust<span>Stego</span></div>
     <nav>
       <a href="index.html">首页</a>
       <a href="embed.html">嵌入</a>
@@ -123,9 +123,9 @@
 </header>
 
 <main>
-  <h1>TPZF 工具箱技术报告 —— 一种面向社交平台退化信道的鲁棒图像隐写方法</h1>
+  <h1>RobustStego 技术报告 —— 一种面向社交平台退化信道的鲁棒图像隐写方法</h1>
   <div class="subtitle">A Robust Image Steganography Method for Social Platform Degradation Channels</div>
-  <div class="meta">作者：TPZF 工具箱项目组 ｜ 日期：2026-09 ｜ 复现材料：本仓库 <code>js/</code> 与 <code>tests/</code> 目录下的零依赖脚本</div>
+  <div class="meta">作者：RobustStego 项目组 ｜ 日期：2026-09 ｜ 复现材料：本仓库 <code>js/</code> 与 <code>tests/</code> 目录下的零依赖脚本</div>
 
   <div class="toc" id="toc">
     <strong>目录</strong>
@@ -241,6 +241,12 @@
 
   <p>
     第 5 节报告实验，覆盖基线退化、局部损坏、几何退化、容量与冗余权衡、真实载体图案例、消融与信道退化。第 6 节讨论容量、鲁棒与隐蔽的三方权衡。第 7 节列出已知限制与未来方向，第 8 节给出结论，第 9 节列出参考文献。
+  </p>
+
+  <h3>1.5 参考来源</h3>
+
+  <p>
+    本文所述方法的设计思路，部分参考了 TPZF 工具箱（tpzfbox.top）公开的图片隐写原理文档；该站点与本文作者无关，此处仅作来源标注。本文所描述的实现与实验均为独立完成，未使用该项目的源代码。相关技术（DCT 差分调制、Reed–Solomon 纠删码、几何标定）在学术界均有公开文献，参见第 9 节参考文献。
   </p>
 
   <!-- ============================================================ -->
@@ -1239,7 +1245,7 @@
   <div class="footer-inner">
     <a href="index.html">← 返回首页</a>
     <a href="dev-test-suite.html">查看测试结果 →</a>
-    <span class="dev">自动化测试（开发者）→ <a href="dev-test-suite.html">dev-test-suite.html</a>，本页为开发者验证工具，普通用户无需访问。</span>
+    <span class="dev">RobustStego 技术报告 ｜ 自动化测试（开发者）→ <a href="dev-test-suite.html">dev-test-suite.html</a>，本页为开发者验证工具，普通用户无需访问。</span>
   </div>
 </footer>
 

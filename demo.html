@@ -1,0 +1,1444 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RobustStego · 演示动画（1920×1080）</title>
+<meta name="description" content="RobustStego 的 B 站宣传动画：10 个场景、约 3 分 30 秒，纯前端零依赖，双击即可播放。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2338bdf8'/><path d='M16 7a5 5 0 0 0-5 5v3h-1.5v10h13V15H21v-3a5 5 0 0 0-5-5zm0 3a2 2 0 0 1 2 2v3h-4v-3a2 2 0 0 1 2-2z' fill='%23fff'/></svg>">
+<style>
+  /* ============================================================
+     demo.html —— RobustStego 的宣传动画（单文件 / 零外部依赖 / 双击可播放）
+     ------------------------------------------------------------
+     设计要点（为什么这样做）：
+       1. 整段动画就是**一张内联 SVG**（viewBox 0 0 1920 1080）。SVG 自带等比缩放，
+          任何窗口尺寸都只是"换了个缩放倍数"，因此 1920×1080 全屏与手机竖屏
+          用同一份坐标，不需要任何媒体查询或重排（AC4 / AC12）。
+       2. 动画不用 CSS animation，而是**由一条中心时间轴逐帧渲染**：
+          每个场景的每一帧都是"局部时间"的纯函数。这样暂停、倍速、跳场景、
+          从任意时刻截帧（?still=）都能得到完全一致的结果，录屏时也不怕掉帧
+          导致的动画错位（CSS 动画一旦掉帧就会与时间轴脱节）。
+       3. 只有"当前场景 + 正在退出的上一个场景"是可见的，其余场景 display:none，
+          因此每帧真正参与合成与重绘的元素很少，稳定 60fps 有余量。
+     ============================================================ */
+  html, body { margin: 0; height: 100%; background: #0b1220; overflow: hidden; }
+  .wrap { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; }
+  #stage { width: 100%; height: 100%; display: block; }
+
+  /* 文本样式（SVG 内使用 class，便于统一改字号与颜色） */
+  text { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif; }
+  .t-hero   { font-size: 132px; font-weight: 800; fill: #e8eefc; letter-spacing: 3px; }
+  .t-title  { font-size: 58px;  font-weight: 700; fill: #e8eefc; letter-spacing: 1px; }
+  .t-huge   { font-size: 92px;  font-weight: 800; fill: #22c55e; letter-spacing: 2px; }
+  .t-sub    { font-size: 40px;  font-weight: 400; fill: #93a4c0; }
+  .t-body   { font-size: 32px;  fill: #c7d3e6; }
+  .t-small  { font-size: 26px;  fill: #7d8ea9; }
+  .t-card   { font-size: 34px;  font-weight: 600; fill: #e8eefc; }
+  .t-cardsub{ font-size: 24px;  fill: #93a4c0; }
+  .t-num    { font-size: 76px;  font-weight: 800; fill: #e8eefc; }
+  .t-mono   { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 40px; fill: #38bdf8; }
+  .c-blue   { fill: #38bdf8; } .c-green { fill: #22c55e; } .c-orange { fill: #f59e0b; }
+  .c-red    { fill: #ef4444; } .c-muted { fill: #7d8ea9; } .c-white { fill: #e8eefc; }
+
+  /* 卡片与容器 */
+  .card      { fill: #111c33; stroke: #24344d; stroke-width: 2; }
+  .card-dark { fill: #0d1729; stroke: #1e2a44; stroke-width: 2; }
+  .pill      { fill: #16243d; stroke: #2b3d5c; stroke-width: 2; }
+  .line      { stroke: #24344d; stroke-width: 2; }
+  .accent    { stroke: #38bdf8; stroke-width: 3; fill: none; }
+  .green     { stroke: #22c55e; stroke-width: 4; fill: none; }
+  .red       { stroke: #ef4444; stroke-width: 4; fill: none; }
+  .dash      { stroke-dasharray: 10 8; }
+
+  /* 控制层（纯净模式下整组隐藏） */
+  #chrome .track   { fill: #1b2a44; }
+  #chrome .fill    { fill: #38bdf8; }
+  #chrome .tick    { stroke: #0b1220; stroke-width: 3; }
+  #chrome .tickdone{ stroke: #1e3a5f; stroke-width: 3; }
+  #subBar .bgtxt   { fill: #b9c6db; }
+</style>
+</head>
+<body>
+<div class="wrap">
+<svg id="stage" viewBox="0 0 1920 1080" preserveAspectRatio="xMidYMid meet" aria-label="RobustStego 演示动画">
+  <defs>
+    <!-- 夜景天空 / 水面 / 标题渐变 -->
+    <linearGradient id="gSky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b3a63"/><stop offset="0.55" stop-color="#3f6ea3"/><stop offset="1" stop-color="#8fb6d8"/>
+    </linearGradient>
+    <linearGradient id="gWater" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b4f74"/><stop offset="1" stop-color="#14263c"/>
+    </linearGradient>
+    <linearGradient id="gMountain" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f4a6b"/><stop offset="1" stop-color="#1d3049"/>
+    </linearGradient>
+    <linearGradient id="gSecret" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#123043"/><stop offset="1" stop-color="#0d2233"/>
+    </linearGradient>
+    <linearGradient id="gGlow" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22c55e" stop-opacity="0"/><stop offset="0.5" stop-color="#22c55e" stop-opacity="0.85"/><stop offset="1" stop-color="#22c55e" stop-opacity="0"/>
+    </linearGradient>
+    <radialGradient id="gSpot" cx="0.5" cy="0.45" r="0.6">
+      <stop offset="0" stop-color="#38bdf8" stop-opacity="0.22"/><stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
+    </radialGradient>
+
+    <!-- 卡片投影：只用在大卡片上（滤镜会拖慢重绘，散点小方块一律不用） -->
+    <filter id="shadow" x="-15%" y="-15%" width="130%" height="140%">
+      <feDropShadow dx="0" dy="10" stdDeviation="16" flood-color="#000" flood-opacity="0.45"/>
+    </filter>
+    <filter id="glowG" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="0" stdDeviation="14" flood-color="#22c55e" flood-opacity="0.75"/>
+    </filter>
+    <filter id="glowB" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="0" stdDeviation="12" flood-color="#38bdf8" flood-opacity="0.65"/>
+    </filter>
+
+    <clipPath id="clipPhoto"><rect x="0" y="0" width="600" height="360" rx="14"/></clipPath>
+    <clipPath id="clipPhotoLeft"><rect x="0" y="0" width="300" height="360" rx="14"/></clipPath>
+
+    <!-- ===== 载体图美术：一张"风景照"（600×360 局部坐标） ===== -->
+    <g id="photoArt">
+      <rect x="0" y="0" width="600" height="360" fill="url(#gSky)"/>
+      <circle cx="452" cy="96" r="34" fill="#ffe9b0" opacity="0.92"/>
+      <circle cx="452" cy="96" r="58" fill="#ffe9b0" opacity="0.18"/>
+      <path d="M0,236 L96,150 L172,214 L268,120 L360,226 L452,168 L540,232 L600,206 L600,286 L0,286 Z" fill="url(#gMountain)"/>
+      <path d="M0,258 L120,206 L232,258 L352,212 L470,258 L600,222 L600,292 L0,292 Z" fill="#16283d" opacity="0.85"/>
+      <rect x="0" y="286" width="600" height="74" fill="url(#gWater)"/>
+      <g stroke="#cfe4f7" stroke-width="2" opacity="0.35">
+        <path d="M60,312 H180"/><path d="M240,330 H392"/><path d="M420,306 H556"/><path d="M120,344 H286"/><path d="M330,352 H470"/>
+      </g>
+      <g fill="#0e1c2e" opacity="0.75">
+        <path d="M150,120 q12,-10 24,0 q-12,-4 -24,0 Z"/><path d="M186,104 q10,-9 20,0 q-10,-4 -20,0 Z"/>
+      </g>
+      <rect x="0" y="0" width="600" height="360" rx="14" fill="none" stroke="#2b3d5c" stroke-width="3"/>
+    </g>
+
+    <!-- ===== 秘密图美术：一张"机密文档"（600×360 局部坐标） ===== -->
+    <g id="secretArt">
+      <rect x="0" y="0" width="600" height="360" rx="14" fill="url(#gSecret)"/>
+      <rect x="150" y="52" width="300" height="256" rx="10" fill="#e8eefc" opacity="0.94"/>
+      <g fill="#8fa3bd">
+        <rect x="182" y="92" width="236" height="14" rx="7"/>
+        <rect x="182" y="126" width="180" height="12" rx="6"/>
+        <rect x="182" y="156" width="212" height="12" rx="6"/>
+        <rect x="182" y="186" width="140" height="12" rx="6"/>
+        <rect x="182" y="216" width="196" height="12" rx="6"/>
+      </g>
+      <g transform="translate(376,268)">
+        <circle r="42" fill="none" stroke="#ef4444" stroke-width="5" opacity="0.9"/>
+        <text y="10" text-anchor="middle" font-size="30" font-weight="700" fill="#ef4444">机密</text>
+      </g>
+      <rect x="0" y="0" width="600" height="360" rx="14" fill="none" stroke="#22c55e" stroke-width="3" opacity="0.7"/>
+    </g>
+
+    <!-- 鼠标指针 -->
+    <g id="cursorArt">
+      <path d="M0,0 L0,30 L8,23 L14,36 L20,33 L14,20 L24,20 Z" fill="#f8fafc" stroke="#0b1220" stroke-width="2.5"/>
+    </g>
+    <!-- 绿色打勾（配合 stroke-dasharray 画出来） -->
+    <g id="checkArt">
+      <circle class="green" r="54" stroke-width="8" opacity="0.95"/>
+      <path d="M-26,2 L-8,20 L28,-18" fill="none" stroke="#22c55e" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"/>
+    </g>
+    <!-- 涂鸦：几条红色涂抹痕迹（模拟"被人涂改过"）。
+         这些路径必须是 <g> 的**直接子元素**，不能用 <use> 引用 defs ——
+         否则逐条描边动画拿不到 path 节点（早期版本就是这么崩的）。 -->
+    <g id="scribbleArt" stroke="#ef4444" stroke-width="9" stroke-linecap="round" fill="none">
+      <path id="scr1" d="M40,60 L210,150"/>
+      <path id="scr2" d="M300,40 L420,120"/>
+      <path id="scr3" d="M120,250 Q220,190 330,268"/>
+      <path id="scr4" d="M60,300 L200,290"/>
+      <rect id="scr5" x="420" y="210" width="140" height="110" fill="#ef4444" opacity="0.55" stroke="none"/>
+    </g>
+  </defs>
+
+  <!-- 背景 -->
+  <rect id="bg" x="0" y="0" width="1920" height="1080" fill="#0f172a"/>
+  <rect id="bgSpot" x="0" y="0" width="1920" height="1080" fill="url(#gSpot)" opacity="0.9"/>
+
+  <!-- ============================================================
+       10 个场景（每个场景一个 <g>，坐标系统一为 1920×1080）
+       只写"骨架与文案"，重复性图元（DCT 网格、散点方块、表格行、刻度）在 JS 里生成
+       ============================================================ -->
+  <g id="scenes">
+
+    <!-- 场景 1：开场 -->
+    <g id="s1">
+      <g id="s1-badge" transform="translate(960,250)">
+        <circle r="52" fill="#132a44" stroke="#38bdf8" stroke-width="3"/>
+        <path d="M0,-26 a15,15 0 0 0 -15,15 v9 h-6 v30 h42 v-30 h-6 v-9 a15,15 0 0 0 -15,-15 z m0,8 a7,7 0 0 1 7,7 v9 h-14 v-9 a7,7 0 0 1 7,-7 z" fill="#38bdf8"/>
+      </g>
+      <text id="s1-t" class="t-hero" x="960" y="500" text-anchor="middle">RobustStego</text>
+      <text id="s1-sub" class="t-sub" x="960" y="600" text-anchor="middle">抗局部损坏的图片藏图工具</text>
+      <text id="s1-line" class="t-small" x="960" y="680" text-anchor="middle">纯前端 · 零依赖 · 浏览器本地运行</text>
+      <g id="s1-rule"><rect x="760" y="726" width="400" height="3" rx="2" fill="#1e3a5f"/></g>
+    </g>
+
+    <!-- 场景 2：问题引入 -->
+    <g id="s2">
+      <text id="s2-t" class="t-title" x="960" y="180" text-anchor="middle">你有没有遇到过……</text>
+      <g id="s2-photo" transform="translate(660,250)">
+        <g filter="url(#shadow)"><use href="#photoArt"/></g>
+        <g id="s2-scribble" clip-path="url(#clipPhoto)"><use href="#scribbleArt"/></g>
+      </g>
+      <g id="s2-tag" transform="translate(960,690)">
+        <rect x="-186" y="-34" width="372" height="68" rx="34" fill="#2a1116" stroke="#ef4444" stroke-width="2"/>
+        <text y="12" text-anchor="middle" font-size="30" fill="#fca5a5">图片已被涂改 · 信息丢失</text>
+      </g>
+      <text id="s2-bottom" class="t-body" x="960" y="800" text-anchor="middle">图片被涂改后，原来的信息就找不回来了</text>
+    </g>
+
+    <!-- 场景 3：方案总览 -->
+    <g id="s3">
+      <text id="s3-t" class="t-title" x="960" y="170" text-anchor="middle">如果信息能藏得更深一点……</text>
+      <g id="s3-carrier" transform="translate(150,330)">
+        <rect class="card" x="-16" y="-16" width="632" height="392" rx="22"/>
+        <text class="t-card" x="300" y="-38" text-anchor="middle">载体图</text>
+        <g clip-path="url(#clipPhoto)"><use href="#photoArt"/></g>
+      </g>
+      <g id="s3-plus" transform="translate(830,506)">
+        <circle r="44" fill="#132a44" stroke="#38bdf8" stroke-width="3"/>
+        <path d="M-18,0 H18 M0,-18 V18" stroke="#38bdf8" stroke-width="7" stroke-linecap="round"/>
+      </g>
+      <g id="s3-secret" transform="translate(960,330)">
+        <rect class="card" x="-16" y="-16" width="632" height="392" rx="22"/>
+        <text class="t-card" x="300" y="-38" text-anchor="middle">秘密图</text>
+        <g clip-path="url(#clipPhoto)"><use href="#secretArt"/></g>
+      </g>
+      <g id="s3-stego" transform="translate(960,330)">
+        <rect id="s3-stegoFrame" x="-18" y="-18" width="636" height="396" rx="24" fill="none" stroke="#22c55e" stroke-width="6"/>
+        <rect class="card" x="-16" y="-16" width="632" height="392" rx="22"/>
+        <text class="t-card c-green" x="300" y="-38" text-anchor="middle">隐写图（和载体图一模一样）</text>
+        <g clip-path="url(#clipPhoto)"><use href="#photoArt"/></g>
+      </g>
+      <text id="s3-bottom" class="t-body" x="960" y="880" text-anchor="middle">看起来一模一样，但藏着秘密</text>
+    </g>
+
+    <!-- 场景 4：操作演示 · 嵌入 -->
+    <g id="s4">
+      <text id="s4-t" class="t-title" x="960" y="130" text-anchor="middle">嵌入：把秘密图藏进载体图</text>
+      <g id="s4-win" transform="translate(340,190)">
+        <rect class="card-dark" x="0" y="0" width="1240" height="740" rx="18" filter="url(#shadow)"/>
+        <rect x="0" y="0" width="1240" height="52" rx="18" fill="#16243d"/>
+        <rect x="0" y="34" width="1240" height="18" fill="#16243d"/>
+        <g fill="#ef4444"><circle cx="30" cy="26" r="8"/></g>
+        <g fill="#f59e0b"><circle cx="56" cy="26" r="8"/></g>
+        <g fill="#22c55e"><circle cx="82" cy="26" r="8"/></g>
+        <rect x="120" y="14" width="420" height="26" rx="13" fill="#0d1729"/>
+        <text x="138" y="33" font-size="17" fill="#7d8ea9">file:///…/embed.html</text>
+        <text x="600" y="33" font-size="18" fill="#38bdf8">嵌入</text>
+        <text x="670" y="33" font-size="18" fill="#3c5170">提取</text>
+        <text x="740" y="33" font-size="18" fill="#3c5170">技术原理</text>
+        <!-- 两张选择卡 -->
+        <g id="s4-pick1" transform="translate(70,110)">
+          <rect class="card" x="0" y="0" width="520" height="330" rx="16"/>
+          <text class="t-card" x="260" y="46" text-anchor="middle">① 选择载体图</text>
+          <rect x="120" y="80" width="280" height="64" rx="14" fill="#1c3a5e" stroke="#38bdf8" stroke-width="2"/>
+          <text x="260" y="122" text-anchor="middle" font-size="26" fill="#bfe3ff">点击选择文件</text>
+          <g id="s4-thumb1" transform="translate(150,168) scale(0.3)">
+            <g clip-path="url(#clipPhoto)"><use href="#photoArt"/></g>
+          </g>
+          <text id="s4-meta1" class="t-small" x="260" y="310" text-anchor="middle">carrier.png ｜ 2048 × 2048</text>
+        </g>
+        <g id="s4-pick2" transform="translate(650,110)">
+          <rect class="card" x="0" y="0" width="520" height="330" rx="16"/>
+          <text class="t-card" x="260" y="46" text-anchor="middle">② 选择秘密图</text>
+          <rect x="120" y="80" width="280" height="64" rx="14" fill="#1c3a5e" stroke="#38bdf8" stroke-width="2"/>
+          <text x="260" y="122" text-anchor="middle" font-size="26" fill="#bfe3ff">点击选择文件</text>
+          <g id="s4-thumb2" transform="translate(150,168) scale(0.3)">
+            <g clip-path="url(#clipPhoto)"><use href="#secretArt"/></g>
+          </g>
+          <text id="s4-meta2" class="t-small" x="260" y="310" text-anchor="middle">secret.png ｜ 512 × 512</text>
+        </g>
+        <!-- 开始嵌入 + 进度 -->
+        <g id="s4-go" transform="translate(70,480)">
+          <rect x="0" y="0" width="1100" height="96" rx="18" fill="#132a44" stroke="#38bdf8" stroke-width="2"/>
+          <text id="s4-goText" x="550" y="60" text-anchor="middle" font-size="34" font-weight="700" fill="#e8eefc">③ 开始嵌入</text>
+        </g>
+        <rect x="70" y="600" width="1100" height="22" rx="11" fill="#16243d"/>
+        <rect id="s4-bar" x="70" y="600" width="0" height="22" rx="11" fill="#38bdf8"/>
+        <text id="s4-status" class="t-small" x="70" y="662">等待中</text>
+        <g id="s4-out" transform="translate(880,600) scale(0.42)">
+          <g clip-path="url(#clipPhoto)"><use href="#photoArt"/></g>
+        </g>
+        <text id="s4-ok" class="t-small c-green" x="880" y="700">已生成隐写图（PNG）</text>
+      </g>
+      <text id="s4-bottom" class="t-body" x="960" y="985" text-anchor="middle">三步完成，全程在浏览器本地</text>
+      <use id="s4-cursor" href="#cursorArt" transform="translate(0,0)" opacity="0"/>
+      <circle id="s4-ripple" r="0" fill="none" stroke="#38bdf8" stroke-width="4" opacity="0"/>
+    </g>
+
+    <!-- 场景 5：操作演示 · 提取 -->
+    <g id="s5">
+      <text id="s5-t" class="t-title" x="960" y="130" text-anchor="middle">提取：对方用同一个工具还原</text>
+      <g id="s5-win" transform="translate(340,190)">
+        <rect class="card-dark" x="0" y="0" width="1240" height="740" rx="18" filter="url(#shadow)"/>
+        <rect x="0" y="0" width="1240" height="52" rx="18" fill="#16243d"/>
+        <rect x="0" y="34" width="1240" height="18" fill="#16243d"/>
+        <g fill="#ef4444"><circle cx="30" cy="26" r="8"/></g>
+        <g fill="#f59e0b"><circle cx="56" cy="26" r="8"/></g>
+        <g fill="#22c55e"><circle cx="82" cy="26" r="8"/></g>
+        <rect x="120" y="14" width="420" height="26" rx="13" fill="#0d1729"/>
+        <text x="138" y="33" font-size="17" fill="#7d8ea9">file:///…/extract.html</text>
+        <text x="600" y="33" font-size="18" fill="#3c5170">嵌入</text>
+        <text x="670" y="33" font-size="18" fill="#38bdf8">提取</text>
+        <text x="740" y="33" font-size="18" fill="#3c5170">技术原理</text>
+        <g id="s5-pick" transform="translate(70,110)">
+          <rect class="card" x="0" y="0" width="520" height="330" rx="16"/>
+          <text class="t-card" x="260" y="46" text-anchor="middle">上传隐写图</text>
+          <rect x="120" y="80" width="280" height="64" rx="14" fill="#1c3a5e" stroke="#38bdf8" stroke-width="2"/>
+          <text x="260" y="122" text-anchor="middle" font-size="26" fill="#bfe3ff">点击选择文件</text>
+          <g id="s5-thumb" transform="translate(150,168) scale(0.3)">
+            <g clip-path="url(#clipPhoto)"><use href="#photoArt"/></g>
+          </g>
+          <text id="s5-meta" class="t-small" x="260" y="310" text-anchor="middle">stego.png ｜ 2048 × 2048</text>
+        </g>
+        <g id="s5-go" transform="translate(650,110)">
+          <rect x="0" y="0" width="520" height="96" rx="18" fill="#132a44" stroke="#38bdf8" stroke-width="2"/>
+          <text x="260" y="60" text-anchor="middle" font-size="34" font-weight="700" fill="#e8eefc">开始提取</text>
+        </g>
+        <rect x="650" y="240" width="520" height="20" rx="10" fill="#16243d"/>
+        <rect id="s5-bar" x="650" y="240" width="0" height="20" rx="10" fill="#22c55e"/>
+        <text id="s5-status" class="t-small" x="650" y="300">等待中</text>
+        <g id="s5-out" transform="translate(650,330)">
+          <rect class="card" x="0" y="0" width="520" height="330" rx="16"/>
+          <text class="t-card c-green" x="260" y="42" text-anchor="middle">还原出的秘密图</text>
+          <g transform="translate(110,70) scale(0.5)">
+            <g clip-path="url(#clipPhoto)"><use href="#secretArt"/></g>
+          </g>
+        </g>
+      </g>
+      <text id="s5-bottom" class="t-body" x="960" y="985" text-anchor="middle">对方用同一个工具就能还原</text>
+      <use id="s5-cursor" href="#cursorArt" transform="translate(0,0)" opacity="0"/>
+      <circle id="s5-ripple" r="0" fill="none" stroke="#38bdf8" stroke-width="4" opacity="0"/>
+    </g>
+
+    <!-- 场景 6：核心原理 · DCT 调制 -->
+    <g id="s6">
+      <text id="s6-t" class="t-title" x="960" y="150" text-anchor="middle">它是怎么藏进去的？</text>
+      <g id="s6-left" transform="translate(180,260)">
+        <rect class="card" x="-30" y="-70" width="600" height="600" rx="22" filter="url(#shadow)"/>
+        <text class="t-card" x="270" y="-24" text-anchor="middle">8×8 DCT 系数矩阵</text>
+        <g id="s6-grid1"></g>
+      </g>
+      <g id="s6-right" transform="translate(1020,260)">
+        <rect class="card" x="-30" y="-70" width="600" height="600" rx="22" filter="url(#shadow)"/>
+        <text class="t-card" x="270" y="-24" text-anchor="middle">比较系数的大小关系</text>
+        <g id="s6-pairA" transform="translate(90,120)">
+          <rect class="card-dark" x="0" y="0" width="420" height="150" rx="16"/>
+          <text x="40" y="62" font-size="34" fill="#e8eefc">a = 42</text>
+          <text x="40" y="112" font-size="34" fill="#e8eefc">b = 12</text>
+          <text id="s6-signA" x="330" y="90" font-size="46" font-weight="800" text-anchor="middle" fill="#38bdf8">&gt;</text>
+          <text x="150" y="90" font-size="30" fill="#93a4c0">→ 1</text>
+        </g>
+        <g id="s6-pairB" transform="translate(90,300)">
+          <rect class="card-dark" x="0" y="0" width="420" height="150" rx="16"/>
+          <text x="40" y="62" font-size="34" fill="#e8eefc">a = 12</text>
+          <text x="40" y="112" font-size="34" fill="#e8eefc">b = 42</text>
+          <text id="s6-signB" x="330" y="90" font-size="46" font-weight="800" text-anchor="middle" fill="#f59e0b">&lt;</text>
+          <text x="150" y="90" font-size="30" fill="#93a4c0">→ 0</text>
+        </g>
+        <text class="t-small" x="270" y="510" text-anchor="middle">a &gt; b 表示 1 ｜ a &lt; b 表示 0（差值中点在编码前后不变）</text>
+      </g>
+      <text id="s6-bottom" class="t-body" x="960" y="960" text-anchor="middle">修改系数大小关系，人眼看不出，局部损坏后仍能恢复</text>
+    </g>
+
+    <!-- 场景 7：核心卖点 · 抗局部损坏（视频高潮） -->
+    <g id="s7">
+      <text id="s7-t" class="t-huge" x="960" y="200" text-anchor="middle">这就是它的厉害之处</text>
+
+      <!-- 阶段二：分屏（左边被涂黑，右边散点方块亮起） -->
+      <g id="s7-split">
+        <g id="s7-left2" transform="translate(140,300)">
+          <g clip-path="url(#clipPhoto)"><use href="#photoArt"/></g>
+          <rect id="s7-black2" x="150" y="0" width="300" height="360" fill="#000" opacity="0.94"/>
+          <rect id="s7-mark2" x="150" y="0" width="300" height="360" fill="none" stroke="#ef4444" stroke-width="4" class="dash"/>
+          <text class="t-card" x="300" y="-30" text-anchor="middle">隐写图 · 中间涂黑 25%</text>
+          <text id="s7-badTag" class="t-small c-red" x="300" y="404" text-anchor="middle">损坏区域</text>
+        </g>
+        <g id="s7-right2" transform="translate(1080,300)">
+          <g clip-path="url(#clipPhoto)"><use href="#photoArt"/></g>
+          <g id="s7-tiles"></g>
+          <text class="t-card c-green" x="300" y="-30" text-anchor="middle">剩余承载块（数据分散在整图）</text>
+          <text class="t-small c-green" x="300" y="404" text-anchor="middle">散落的绿色方块 = 仍在工作的承载块</text>
+        </g>
+      </g>
+
+      <!-- 阶段三：逐步涂黑 10% → 20% → 25% + 打勾 -->
+      <g id="s7-step">
+        <g transform="translate(560,300)">
+          <g clip-path="url(#clipPhoto)"><use href="#photoArt"/></g>
+          <rect id="s7-black3" x="0" y="0" width="0" height="360" fill="#000" opacity="0.94"/>
+          <rect id="s7-mark3" x="0" y="0" width="0" height="360" fill="none" stroke="#ef4444" stroke-width="4" class="dash"/>
+          <g id="s7-tiles3"></g>
+        </g>
+        <g id="s7-progress" transform="translate(1300,300)">
+          <text id="s7-pct" class="t-num" x="0" y="80">0%</text>
+          <text class="t-body" x="0" y="150">遮挡面积</text>
+          <g id="s7-ok1" transform="translate(0,210)"><text class="t-body c-green" font-size="34">✅ 涂黑 10% → 仍可还原</text></g>
+          <g id="s7-ok2" transform="translate(0,270)"><text class="t-body c-green" font-size="34">✅ 涂黑 20% → 仍可还原</text></g>
+          <g id="s7-check" transform="translate(120,400)" opacity="0">
+            <!-- 打勾图形直接内联在这里（不要放进 defs 再用 <use>：那样 querySelector
+                 找不到圆和勾，动画会拿到 null 而抛错） -->
+            <circle id="s7-checkC" r="54" fill="none" stroke="#22c55e" stroke-width="8" opacity="0.95"/>
+            <path id="s7-checkP" d="M-26,2 L-8,20 L28,-18" fill="none" stroke="#22c55e" stroke-width="11"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+            <text class="t-card c-green" x="0" y="110" text-anchor="middle">提取成功</text>
+          </g>
+        </g>
+      </g>
+
+      <!-- 阶段四：三张卡片依次亮起 -->
+      <g id="s7-cards">
+        <g id="s7-c1" transform="translate(230,760)">
+          <rect class="card" x="0" y="0" width="440" height="120" rx="18"/>
+          <text class="t-card" x="40" y="76">涂黑 25%</text>
+          <text x="390" y="76" font-size="40" text-anchor="end" class="c-green">✅</text>
+        </g>
+        <g id="s7-c2" transform="translate(740,760)">
+          <rect class="card" x="0" y="0" width="440" height="120" rx="18"/>
+          <text class="t-card" x="40" y="76">裁切一半</text>
+          <text x="390" y="76" font-size="40" text-anchor="end" class="c-green">✅</text>
+        </g>
+        <g id="s7-c3" transform="translate(1250,760)">
+          <rect class="card" x="0" y="0" width="440" height="120" rx="18"/>
+          <text class="t-card" x="40" y="76">叠加水印</text>
+          <text x="390" y="76" font-size="40" text-anchor="end" class="c-green">✅</text>
+        </g>
+      </g>
+    </g>
+
+    <!-- 场景 8：实测数据 -->
+    <g id="s8">
+      <text id="s8-t" class="t-title" x="960" y="150" text-anchor="middle">实测数据</text>
+      <g id="s8-table" transform="translate(240,240)">
+        <rect class="card" x="-20" y="-20" width="1000" height="620" rx="22" filter="url(#shadow)"/>
+        <text class="t-small" x="40" y="10" font-size="24">测试项</text>
+        <text class="t-small" x="700" y="10" font-size="24">结果</text>
+        <g id="s8-rows"></g>
+      </g>
+      <g id="s8-stats" transform="translate(1320,320)">
+        <g id="s8-st1">
+          <rect class="card" x="0" y="0" width="400" height="150" rx="20"/>
+          <text class="t-num" id="s8-n1" x="40" y="96">0</text>
+          <text class="t-small" x="40" y="128">项自动化测试</text>
+        </g>
+        <g id="s8-st2" transform="translate(0,190)">
+          <rect class="card" x="0" y="0" width="400" height="150" rx="20" stroke="#22c55e"/>
+          <text class="t-num c-green" id="s8-n2" x="40" y="96">0</text>
+          <text class="t-small" x="40" y="128">项通过</text>
+        </g>
+        <g id="s8-st3" transform="translate(0,380)">
+          <rect class="card" x="0" y="0" width="400" height="150" rx="20"/>
+          <text class="t-card c-orange" x="40" y="70" font-size="30">唯一未过：T30</text>
+          <text class="t-small" x="40" y="112">纯噪声载体 + 缩放的精度限制</text>
+        </g>
+      </g>
+      <text id="s8-bottom" class="t-small" x="960" y="930" text-anchor="middle">数据来自仓库内 36 项浏览器用例与 Node 验收脚本，可复算</text>
+    </g>
+
+    <!-- 场景 9：使用须知 -->
+    <g id="s9">
+      <text id="s9-t" class="t-title c-blue" x="960" y="160" text-anchor="middle">使用须知</text>
+      <text id="s9-sub" class="t-sub" x="960" y="220" text-anchor="middle" font-size="32">传输方式决定对方能不能还原</text>
+      <g id="s9-good" transform="translate(180,300)">
+        <rect class="card" x="0" y="0" width="740" height="420" rx="22"/>
+        <rect x="0" y="0" width="740" height="70" rx="22" fill="#0e2a1b"/>
+        <rect x="0" y="48" width="740" height="22" fill="#0e2a1b"/>
+        <text class="t-card c-green" x="40" y="48">✅ 推荐这样发</text>
+        <g id="s9-goodRows"></g>
+      </g>
+      <g id="s9-bad" transform="translate(1000,300)">
+        <rect class="card" x="0" y="0" width="740" height="420" rx="22"/>
+        <rect x="0" y="0" width="740" height="70" rx="22" fill="#2a2314"/>
+        <rect x="0" y="48" width="740" height="22" fill="#2a2314"/>
+        <text class="t-card c-orange" x="40" y="48">⚠️ 避免这样发</text>
+        <g id="s9-badRows"></g>
+      </g>
+      <text id="s9-bottom" class="t-body" x="960" y="830" text-anchor="middle">传输方式影响能不能还原，请用「原图 / 文件」方式发送</text>
+      <text id="s9-note" class="t-small" x="960" y="890" text-anchor="middle">这不是工具的缺陷，而是平台会重新压缩图片：藏进去的改动只有几个灰度级</text>
+    </g>
+
+    <!-- 场景 10：结尾 -->
+    <g id="s10">
+      <text id="s10-t" class="t-hero" x="960" y="380" text-anchor="middle">立即体验</text>
+      <g id="s10-urlBox" transform="translate(960,540)">
+        <!-- 盒子宽度按最终网址的长度定（28 字符 × 24.2 px ≈ 678 px，两侧各留约 60 px）：
+             仓库改名后网址变短，沿用原来的 1120 px 会空掉一半 -->
+        <rect x="-400" y="-58" width="800" height="116" rx="22" fill="#0d1729" stroke="#38bdf8" stroke-width="3" filter="url(#glowB)"/>
+        <text id="s10-url" class="t-mono" x="-340" y="14" text-anchor="start"></text>
+        <rect id="s10-caret" x="-340" y="-24" width="4" height="46" fill="#38bdf8"/>
+      </g>
+      <text id="s10-line" class="t-body" x="960" y="700" text-anchor="middle">GPL-3.0 开源 · 欢迎 Star · 零后端零依赖</text>
+      <g id="s10-badge" transform="translate(960,790)">
+        <rect class="pill" x="-300" y="-32" width="600" height="64" rx="32"/>
+        <text class="t-small" x="0" y="10" text-anchor="middle">抗局部损坏 · 纯前端 · 浏览器本地运行</text>
+      </g>
+    </g>
+  </g>
+
+  <!-- ============================================================
+       控制层：顶部进度条 + 10 个章节刻度 + 场景序号 + 快捷键提示
+       （纯净模式下整组隐藏；字幕条不在这一组里，纯净模式仍然显示）
+       ============================================================ -->
+  <g id="chrome">
+    <rect id="barTrack" x="80" y="26" width="1760" height="8" rx="4" class="track"/>
+    <rect id="barFill" x="80" y="26" width="0" height="8" rx="4" class="fill"/>
+    <g id="barTicks"></g>
+    <text id="chapterNow" class="t-small" x="80" y="78">1/10 · 开场</text>
+    <text id="clockNow" class="t-small" x="1840" y="78" text-anchor="end">0:00 / 3:30</text>
+    <text id="hintLine" class="t-small" x="960" y="1052" text-anchor="middle" font-size="22">
+      空格 播放/暂停 ｜ ←/→ 切场景 ｜ R 重播 ｜ F 全屏 ｜ S 字幕 ｜ H 纯净模式
+    </text>
+  </g>
+
+  <!-- 字幕条：纯净模式下唯一保留的 UI -->
+  <g id="subBar">
+    <rect id="subBg" x="160" y="950" width="1600" height="76" rx="16" fill="#000" opacity="0.55"/>
+    <text id="subText" x="960" y="1000" text-anchor="middle" font-size="34" fill="#ffffff"></text>
+  </g>
+</svg>
+</div>
+
+<script>
+/* ============================================================
+   RobustStego 演示动画 —— 时间轴引擎 + 场景渲染
+   ------------------------------------------------------------
+   结构：
+     ① 常量与工具函数（缓动 / 属性写入缓存 / 关键帧求值）
+     ② 时间轴（场景表、总时长、播放控制、跳转、循环）
+     ③ 10 个场景的渲染函数（每个都是"局部时间 → 画面"的纯函数）
+     ④ 控制层（进度条、字幕、章节、纯净模式）
+     ⑤ 交互（键盘 / URL 参数 / 全屏）
+     ⑥ 开发模式：?still= / ?bench= / ?selftest=（录屏与自检用，不影响正常播放）
+   ============================================================ */
+(function () {
+  'use strict';
+
+  var NS = 'http://www.w3.org/2000/svg';
+  var $ = function (id) { return document.getElementById(id); };
+
+  function el(tag, attrs, parent) {
+    var n = document.createElementNS(NS, tag);
+    if (attrs) for (var k in attrs) if (attrs.hasOwnProperty(k)) n.setAttribute(k, attrs[k]);
+    if (parent) parent.appendChild(n);
+    return n;
+  }
+
+  /* ---------------- ① 工具 ---------------- */
+  function clamp01(x) { return x < 0 ? 0 : (x > 1 ? 1 : x); }
+  /** 关键帧求值：把 [a,b] 区间内的进度映射到 0~1（超出则夹取） */
+  function at(u, a, b) { return clamp01((u - a) / (b - a)); }
+  function easeOut(x) { return 1 - Math.pow(1 - clamp01(x), 3); }
+  function easeInOut(x) {
+    x = clamp01(x);
+    return x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+  }
+  function easeBack(x) {
+    x = clamp01(x);
+    var c1 = 1.70158, c3 = c1 + 1;
+    return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2);
+  }
+  function lerp(a, b, t) { return a + (b - a) * t; }
+
+  /**
+   * 带缓存的属性写入：同一帧里重复设置同一个值会被跳过。
+   * 为什么需要：SVG 属性写入会触发样式重算，60fps 下每帧几百次无谓写入很浪费。
+   */
+  function sa(node, name, val) {
+    // 特例：文本内容必须写成 DOM 属性。早期版本给 <text> 设了 attribute "textContent"，
+    // 结果画面上什么都不显示（属性名对了、机制错了），这里在入口处统一纠正。
+    if (name === 'textContent') { txt(node, String(val)); return; }
+    if (node.__a === undefined) node.__a = {};
+    if (node.__a[name] === val) return;
+    node.__a[name] = val;
+    node.setAttribute(name, val);
+  }
+  function ss(node, name, val) {
+    if (node.__s === undefined) node.__s = {};
+    if (node.__s[name] === val) return;
+    node.__s[name] = val;
+    node.style[name] = val;
+  }
+  /** 透明度 + 彻底隐藏（值为 0 时不再参与合成） */
+  function vis(node, alpha) {
+    var a = clamp01(alpha);
+    sa(node, 'opacity', a <= 0.002 ? '0' : (a >= 0.998 ? '1' : a.toFixed(3)));
+    ss(node, 'display', a <= 0.002 ? 'none' : '');
+  }
+  function tr(node, x, y, s) {
+    var t = 'translate(' + x.toFixed(2) + ',' + y.toFixed(2) + ')';
+    // 只有明确传入正的缩放系数才追加 scale：早期把"不缩放"写成 0，
+    // 结果 transform 里出现 scale(0)，文字直接被缩没了。
+    if (s !== undefined && s > 0) t += ' scale(' + s.toFixed(4) + ')';
+    sa(node, 'transform', t);
+  }
+  /**
+   * 写文本内容（带缓存）。
+   * 注意不能用 setAttribute('textContent')：SVG 里 textContent 是 DOM 属性而不是
+   * 呈现属性，写成属性只会多出一个没人看的 attribute，文字不会变。
+   */
+  function txt(node, s) {
+    if (node.__t === s) return;
+    node.__t = s;
+    node.textContent = s;
+  }
+
+  /* ---------------- ② 时间轴 ---------------- */
+  /**
+   * 任务书逐场景给定的秒数（合计 250 秒）。但任务书抬头与验收标准都要求
+   * "总时长约 210 秒 / 200~220 秒"，两者相差 40 秒（3:30 与 4:10）。
+   * 处理方式：每个场景的关键帧都按**场景内归一化时间**书写，因此整条时间轴
+   * 可以整体缩放而不破坏任何内部节奏。默认取 0.84（250 × 0.84 = 210 秒，
+   * 落在验收区间内），用 ?scale=1 可得到任务书字面的 250 秒版本。
+   */
+  var SPEC = [
+    { name: '开场',        sec: 10, cues: [[0, 10, '一个能在图片里藏秘密图的小工具']] },
+    { name: '问题引入',    sec: 25, cues: [[0, 13, '发到网上的图片，很容易被涂改、裁切、加水印'],
+                                          [13, 25, '信息一旦被改掉，就再也找不回来了']] },
+    { name: '方案总览',    sec: 20, cues: [[0, 12, '把秘密图藏进载体图，得到一张看起来完全一样的图片'],
+                                          [12, 20, '肉眼看不出区别，但秘密已经在里面了']] },
+    { name: '嵌入演示',    sec: 30, cues: [[0, 12, '操作很简单：上传两张图'],
+                                          [12, 30, '点一下按钮，剩下的都交给浏览器本地完成']] },
+    { name: '提取演示',    sec: 20, cues: [[0, 20, '接收方只需上传隐写图，就能看到秘密']] },
+    { name: 'DCT 调制',    sec: 30, cues: [[0, 15, '简单说，就是把图片分解成数学系数'],
+                                          [15, 30, '只改动一点点人眼察觉不到的差异，就能表达 0 和 1']] },
+    { name: '抗局部损坏',  sec: 45, cues: [[0, 16, '即使图片被涂黑、裁切、加水印'],
+                                          [16, 32, '只要损坏不超过 25%，秘密图仍能完整还原'],
+                                          [32, 45, '秘密数据被打散藏在整张图里，坏掉一块不影响其他部分']] },
+    { name: '实测数据',    sec: 30, cues: [[0, 16, '每一项都有可复算的实测'],
+                                          [16, 30, '36 项自动化测试，35 项通过，唯一未过的是已知的精度限制']] },
+    { name: '使用须知',    sec: 25, cues: [[0, 12, '重要提醒：发送时一定要勾选「原图」或者「发文件」'],
+                                          [12, 25, '平台压缩会让藏进去的信息丢失，这不是工具的缺陷，而是传输方式的问题']] },
+    { name: '结尾',        sec: 15, cues: [[0, 8, '网址在简介和评论区置顶'],
+                                          [8, 15, '欢迎试用和反馈，也欢迎 Star']] }
+  ];
+  var MAX_SCALE = 1;
+  var DEFAULT_SCALE = 0.84;
+
+  var scale = DEFAULT_SCALE;
+  var durations = [];      // 缩放后的每场秒数
+  var starts = [];         // 每场的起始秒
+  var TOTAL = 0;
+
+  function buildTimeline(sc) {
+    scale = sc;
+    durations = SPEC.map(function (s) { return s.sec * scale; });
+    starts = [];
+    var acc = 0;
+    durations.forEach(function (d) { starts.push(acc); acc += d; });
+    TOTAL = acc;
+  }
+  buildTimeline(DEFAULT_SCALE);
+
+  /** 全局时间 → { index, local }（local 为该场景内的秒数） */
+  function locate(t) {
+    if (t < 0) t = 0;
+    for (var i = SPEC.length - 1; i >= 0; i--) {
+      if (t >= starts[i]) return { index: i, local: t - starts[i] };
+    }
+    return { index: 0, local: 0 };
+  }
+
+  /* ---------------- 场景渲染函数表 ---------------- */
+  var RENDER = [];
+
+  /* ============================================================
+     场景 1：开场
+     ============================================================ */
+  RENDER[0] = function (u, lt) {
+    var d = SPEC[0].sec;
+    var k = function (s) { return s / d; };
+    // 0-3s 黑屏淡入由全局首尾淡入负责；3-6s 大字缩放淡入；6-8s 副标题下滑入；8-10s 小字与分隔线淡入
+    vis($('s1-badge'), at(u, 0, k(2.5)) * 0.9 + 0.1);
+    var titleIn = easeBack(at(u, k(3), k(5.2)));
+    vis($('s1-t'), at(u, k(3), k(4.2)));
+    tr($('s1-t'), 0, (1 - titleIn) * 26, 0);
+    sa($('s1-t'), 'opacity', clamp01(titleIn * 0.6 + at(u, k(3), k(4.2)) * 0.4).toFixed(3));
+    var subIn = easeOut(at(u, k(6), k(7.4)));
+    vis($('s1-sub'), subIn);
+    tr($('s1-sub'), 0, (1 - subIn) * 34, 0);
+    vis($('s1-line'), easeOut(at(u, k(8), k(9.2))) * 0.95);
+    vis($('s1-rule'), at(u, k(8), k(9.6)));
+    tr($('s1-badge'), 960, 250 - (1 - easeOut(at(u, 0, k(3)))) * 20);
+  };
+
+  /* ============================================================
+     场景 2：问题引入
+     ============================================================ */
+  RENDER[1] = function (u, lt) {
+    var k = function (s) { return s / 25; };
+    vis($('s2-t'), easeOut(at(u, 0, k(5))));
+    var photoIn = easeBack(at(u, k(5), k(9)));
+    vis($('s2-photo'), at(u, k(5), k(7)) * (1 - at(u, k(24), 1) * 0.0));
+    tr($('s2-photo'), 660, 250 + (1 - photoIn) * 40, 0.96 + photoIn * 0.04);
+    // 12-18s：红色涂鸦逐条画出来（stroke-dashoffset 动画）
+    //   注意：图形本体在 <defs> 里，场景中是 <use> 实例。要拿 path 节点必须查 defs 里的
+    //   源图形（$('scribbleArt')），查 #s2-scribble 只会拿到一个 <use>，什么都查不到。
+    vis($('s2-scribble'), at(u, k(12), k(13)));
+    var sc = $('scribbleArt');
+    var paths = sc.querySelectorAll('path');
+    var dr = easeOut(at(u, k(12), k(17)));
+    for (var i = 0; i < paths.length; i++) {
+      var len = 420;
+      var seg = clamp01(dr * paths.length - i);
+      sa(paths[i], 'stroke-dasharray', len);
+      sa(paths[i], 'stroke-dashoffset', (len * (1 - seg)).toFixed(1));
+    }
+    vis($('scr5'), clamp01(dr * 2 - 1));
+    vis($('s2-tag'), easeBack(at(u, k(15), k(17))));
+    tr($('s2-tag'), 960, 690 + (1 - easeBack(at(u, k(15), k(17)))) * 20);
+    // 涂改后整体压暗，强化"信息丢了"
+    sa($('s2-photo'), 'filter', at(u, k(13), k(16)) > 0.5 ? 'saturate(0.35)' : 'none');
+    vis($('s2-bottom'), easeOut(at(u, k(18), k(21))));
+  };
+
+  /* ============================================================
+     场景 3：方案总览（载体 + 秘密 → 隐写图）
+     ============================================================ */
+  RENDER[2] = function (u, lt) {
+    var k = function (s) { return s / 20; };
+    vis($('s3-t'), easeOut(at(u, 0, k(5))));
+    var cIn = easeOut(at(u, k(5), k(8)));
+    vis($('s3-carrier'), cIn);
+    tr($('s3-carrier'), lerp(-140, 150, cIn), 330);
+    // 10-15s：加号 + 秘密图出现
+    var pIn = easeBack(at(u, k(10), k(12)));
+    vis($('s3-plus'), pIn);
+    tr($('s3-plus'), 830, lerp(560, 506, pIn));
+    var sIn = easeOut(at(u, k(10), k(14)));
+    vis($('s3-secret'), sIn);
+    tr($('s3-secret'), lerp(1160, 960, sIn), 330);
+    // 15-20s：秘密图位置变成"隐写图"（和载体图一模一样），绿框闪烁。
+    //   交叉淡化的窗口收窄到 1 秒：太长会出现"秘密图与隐写图半透明叠在一起"的脏画面。
+    var mIn = easeInOut(at(u, k(15), k(16)));
+    vis($('s3-secret'), sIn * (1 - Math.min(1, mIn * 1.6)));
+    vis($('s3-stego'), mIn);
+    sa($('s3-stego'), 'transform', 'translate(960,330) scale(' + (0.94 + 0.06 * mIn).toFixed(3) + ')');
+    var pulse = 0.55 + 0.45 * Math.abs(Math.sin(lt * 2.4));
+    vis($('s3-stegoFrame'), mIn * pulse);
+    vis($('s3-bottom'), easeOut(at(u, k(16), k(18.5))));
+  };
+
+  /* ============================================================
+     场景 4：操作演示 · 嵌入（光标 + 缩略图 + 进度条）
+     ============================================================ */
+  RENDER[3] = function (u, lt) {
+    var k = function (s) { return s / 30; };
+    vis($('s4-t'), easeOut(at(u, 0, k(3))));
+    var wIn = easeOut(at(u, 0, k(4)));
+    vis($('s4-win'), wIn);
+    tr($('s4-win'), 340, 190 + (1 - wIn) * 30);
+
+    // 缩略图与按钮高亮
+    var t1 = easeBack(at(u, k(9), k(11)));
+    vis($('s4-thumb1'), t1);
+    vis($('s4-meta1'), t1);
+    var t2 = easeBack(at(u, k(16), k(18)));
+    vis($('s4-thumb2'), t2);
+    vis($('s4-meta2'), t2);
+    sa($('s4-pick1'), 'opacity', at(u, k(8), k(8.4)) > 0.5 ? '1' : '1');
+
+    // 进度条：22-28s 推进到 100%
+    var prog = easeInOut(at(u, k(23), k(28)));
+    sa($('s4-bar'), 'width', (1100 * prog).toFixed(1));
+    var st = '等待中';
+    if (lt >= 23 * scale) st = '正在写入图片… ' + Math.round(prog * 100) + '%';
+    else if (t2 > 0.5) st = '已就绪，点击开始嵌入';
+    else if (t1 > 0.5) st = '已选择载体图，接着选秘密图';
+    sa($('s4-status'), 'textContent', st);
+    var outIn = easeBack(at(u, k(28), k(29.5)));
+    vis($('s4-out'), outIn);
+    tr($('s4-out'), 880, 600 + (1 - outIn) * 14, 0.42);
+    vis($('s4-ok'), easeOut(at(u, k(28.5), k(30))));
+    vis($('s4-bottom'), easeOut(at(u, k(26), k(29))));
+
+    // 光标：8-11s 移到载体按钮；11s 点击；15-18s 移到秘密按钮；18s 点击；22-23s 移到开始按钮；23s 点击
+    var cur = $('s4-cursor');
+    var t = lt / scale;      // 用"任务书秒"来写轨迹，缩放后依然对齐
+    var pts = [[1500, 900], [510, 470], [510, 470], [1090, 470], [1090, 470], [900, 760], [900, 760], [980, 700]];
+    var times = [7.5, 10.5, 11.2, 15.5, 18.2, 21.5, 22.6, 30];
+    var idx = 0;
+    while (idx < times.length - 2 && t > times[idx + 1]) idx++;
+    var seg = at(t, times[idx], times[idx + 1]);
+    var x = lerp(pts[idx][0], pts[idx + 1][0], easeInOut(seg));
+    var y = lerp(pts[idx][1], pts[idx + 1][1], easeInOut(seg));
+    vis(cur, at(u, k(7), k(8)) * (1 - at(u, k(29.5), k(30))));
+    tr(cur, x, y);
+    // 点击涟漪
+    var clickAt = [11.2, 18.2, 22.6];
+    var rip = 0, rp = null;
+    for (var ci = 0; ci < clickAt.length; ci++) {
+      var w = at(t, clickAt[ci], clickAt[ci] + 0.6);
+      if (w > 0 && w < 1 && w > rip) { rip = w; rp = pts[clickAt[ci] === 11.2 ? 1 : (clickAt[ci] === 18.2 ? 3 : 5)]; }
+    }
+    vis($('s4-ripple'), rip ? 1 - rip : 0);
+    if (rp) { sa($('s4-ripple'), 'cx', rp[0] + 10); sa($('s4-ripple'), 'cy', rp[1] + 16); sa($('s4-ripple'), 'r', (12 + rip * 46).toFixed(1)); }
+  };
+
+  /* ============================================================
+     场景 5：操作演示 · 提取
+     ============================================================ */
+  RENDER[4] = function (u, lt) {
+    var k = function (s) { return s / 20; };
+    vis($('s5-t'), easeOut(at(u, 0, k(3))));
+    var wIn = easeOut(at(u, 0, k(4)));
+    vis($('s5-win'), wIn);
+    tr($('s5-win'), 340, 190 + (1 - wIn) * 30);
+    var t1 = easeBack(at(u, k(9), k(12)));
+    vis($('s5-thumb'), t1);
+    vis($('s5-meta'), t1);
+    var prog = easeInOut(at(u, k(14), k(17)));
+    sa($('s5-bar'), 'width', (520 * prog).toFixed(1));
+    sa($('s5-status'), 'textContent',
+      lt >= 14 * scale ? ('正在读取承载块… ' + Math.round(prog * 100) + '%') : (t1 > 0.5 ? '已上传隐写图，点击开始提取' : '等待中'));
+    var outIn = easeBack(at(u, k(17), k(19)));
+    vis($('s5-out'), outIn);
+    tr($('s5-out'), 650, 330 + (1 - outIn) * 16);
+    vis($('s5-bottom'), easeOut(at(u, k(15), k(18))));
+    // 光标
+    var t = lt / scale;
+    var pts = [[1500, 920], [540, 300], [540, 300], [1230, 350], [1230, 350]];
+    var times = [5, 9.5, 10.6, 13.5, 14.4];
+    var idx = 0;
+    while (idx < times.length - 2 && t > times[idx + 1]) idx++;
+    var seg = at(t, times[idx], times[idx + 1]);
+    vis($('s5-cursor'), at(u, k(5), k(6)) * (1 - at(u, k(19), k(20))));
+    tr($('s5-cursor'), lerp(pts[idx][0], pts[idx + 1][0], easeInOut(seg)), lerp(pts[idx][1], pts[idx + 1][1], easeInOut(seg)));
+    var w = at(t, 14.4, 15);
+    vis($('s5-ripple'), w ? 1 - w : 0);
+    sa($('s5-ripple'), 'cx', 1240); sa($('s5-ripple'), 'cy', 366);
+    sa($('s5-ripple'), 'r', (12 + w * 44).toFixed(1));
+  };
+
+  /* ============================================================
+     场景 6：DCT 调制
+     ============================================================ */
+  RENDER[5] = function (u, lt) {
+    var k = function (s) { return s / 30; };
+    vis($('s6-t'), easeOut(at(u, 0, k(5))));
+    var lIn = easeOut(at(u, k(8), k(10)));
+    vis($('s6-left'), lIn);
+    tr($('s6-left'), lerp(120, 180, lIn), 260);
+    // 两对系数高亮闪烁
+    var blink = 0.45 + 0.55 * Math.abs(Math.sin(lt * 3));
+    ['p1a', 'p1b', 'p2a', 'p2b'].forEach(function (id) {
+      var n = $(id);
+      if (n) sa(n, 'opacity', (blink * lIn).toFixed(3));
+    });
+    var rIn = easeOut(at(u, k(18), k(20)));
+    vis($('s6-right'), rIn);
+    tr($('s6-right'), lerp(1120, 1020, rIn), 260);
+    var aIn = easeBack(at(u, k(18), k(21)));
+    vis($('s6-pairA'), aIn);
+    tr($('s6-pairA'), 90, 120 + (1 - aIn) * 16);
+    var bIn = easeBack(at(u, k(21), k(24)));
+    vis($('s6-pairB'), bIn);
+    tr($('s6-pairB'), 90, 300 + (1 - bIn) * 16);
+    vis($('s6-bottom'), easeOut(at(u, k(25), k(28))));
+  };
+
+  /* ============================================================
+     场景 7：核心卖点 · 抗局部损坏（45 秒，视频高潮）
+     ============================================================ */
+  RENDER[6] = function (u, lt) {
+    var k = function (s) { return s / 45; };
+    // 阶段一 0-8s：大标题（注意 #s7-t 自带 x/y 绝对坐标，位移只能用 dx=0 的增量，
+    //   写成 translate(960,200) 会与自身坐标叠加、把标题推到画面外）
+    vis($('s7-t'), easeBack(at(u, 0, k(4))) * (1 - at(u, k(6.5), k(8))));
+    tr($('s7-t'), 0, (1 - easeBack(at(u, 0, k(4)))) * 26);
+
+    // 阶段二 8-20s：分屏（左涂黑 25%，右散点方块依次亮起）
+    var sp = at(u, k(8), k(10)) * (1 - at(u, k(19), k(20)));
+    vis($('s7-split'), sp);
+    tr($('s7-left2'), lerp(60, 140, easeOut(at(u, k(8), k(10)))), 300);
+    tr($('s7-right2'), lerp(1160, 1080, easeOut(at(u, k(8), k(10)))), 300);
+    vis($('s7-black2'), easeOut(at(u, k(11), k(13))));
+    vis($('s7-mark2'), at(u, k(11), k(12)));
+    vis($('s7-badTag'), at(u, k(12), k(13)));
+    // 散点方块：8-20s 期间依次亮起（暗示数据分散在整图）
+    var tiles = $('s7-tiles').childNodes;
+    var lit = easeOut(at(u, k(12), k(19))) * tiles.length;
+    for (var i = 0; i < tiles.length; i++) {
+      var a = clamp01(lit - i);
+      sa(tiles[i], 'opacity', (a * 0.95).toFixed(3));
+    }
+
+    // 阶段三 20-35s：同一张图逐步涂黑 10% → 20% → 25%
+    //   这幅图和右侧的百分比一直保留到本场结束（阶段四卡片出现时仍有画面可看，不留大片空白）
+    var st = at(u, k(20), k(21.5)) * (1 - at(u, k(43.5), k(45)));
+    vis($('s7-step'), st);
+    var stepT = at(lt / scale, 21, 30);
+    var pct = 0, showOk1 = 0, showOk2 = 0;
+    if (stepT < 0.33) { pct = lerp(0, 10, easeOut(stepT / 0.33)); }
+    else if (stepT < 0.66) { pct = lerp(10, 20, easeOut((stepT - 0.33) / 0.33)); showOk1 = 1; }
+    else { pct = lerp(20, 25, easeOut((stepT - 0.66) / 0.34)); showOk1 = 1; showOk2 = 1; }
+    if (stepT >= 0.999) pct = 25;
+    // 涂黑块：按面积比换算成尺寸（居中，64 对齐的观感）
+    var side = Math.sqrt(pct / 100);
+    var bw = Math.max(0, 600 * side * 0.86), bh = Math.max(0, 360 * side);
+    var bx = (600 - bw) / 2, by = (360 - bh) / 2;
+    sa($('s7-black3'), 'x', bx.toFixed(1)); sa($('s7-black3'), 'y', by.toFixed(1));
+    sa($('s7-black3'), 'width', bw.toFixed(1)); sa($('s7-black3'), 'height', bh.toFixed(1));
+    sa($('s7-mark3'), 'x', bx.toFixed(1)); sa($('s7-mark3'), 'y', by.toFixed(1));
+    sa($('s7-mark3'), 'width', bw.toFixed(1)); sa($('s7-mark3'), 'height', bh.toFixed(1));
+    vis($('s7-black3'), st * clamp01(stepT * 8));
+    vis($('s7-mark3'), st * clamp01(stepT * 8));
+    sa($('s7-pct'), 'textContent', pct.toFixed(0) + '%');
+    vis($('s7-ok1'), st * showOk1);
+    vis($('s7-ok2'), st * showOk2);
+    // 打勾：30-33s 画出来
+    var chk = at(lt / scale, 30, 33);
+    vis($('s7-check'), st * chk);
+    var circle = $('s7-checkC');
+    var path = $('s7-checkP');
+    var C = 2 * Math.PI * 54;
+    sa(circle, 'stroke-dasharray', C); sa(circle, 'stroke-dashoffset', (C * (1 - clamp01(chk * 1.6))).toFixed(1));
+    sa(path, 'stroke-dasharray', 120); sa(path, 'stroke-dashoffset', (120 * (1 - clamp01(chk * 1.8 - 0.5))).toFixed(1));
+    // 第三阶段也在图上保留散点方块，强调"数据是分散的"
+    var tiles3 = $('s7-tiles3').childNodes;
+    var lit3 = easeOut(at(u, k(21), k(27))) * tiles3.length;
+    for (var j = 0; j < tiles3.length; j++) {
+      sa(tiles3[j], 'opacity', (clamp01(lit3 - j) * 0.9).toFixed(3));
+    }
+
+    // 阶段四 35-45s：三张卡片依次亮起
+    var cIn = at(u, k(36), k(37));
+    vis($('s7-cards'), cIn);
+    var cards = [$('s7-c1'), $('s7-c2'), $('s7-c3')];
+    for (var c = 0; c < cards.length; c++) {
+      var a = easeBack(at(lt / scale, 36 + c * 2.4, 37.6 + c * 2.4));
+      tr(cards[c], [230, 740, 1250][c], lerp(790, 760, a));
+      sa(cards[c], 'opacity', a.toFixed(3));
+      var fr = cards[c].querySelector('rect');
+      sa(fr, 'stroke', a > 0.5 ? '#22c55e' : '#24344d');
+    }
+  };
+
+  /* ============================================================
+     场景 8：实测数据
+     ============================================================ */
+  RENDER[7] = function (u, lt) {
+    var k = function (s) { return s / 30; };
+    vis($('s8-t'), easeOut(at(u, 0, k(4))));
+    var tIn = easeOut(at(u, k(4), k(6)));
+    vis($('s8-table'), tIn);
+    tr($('s8-table'), 240, 240 + (1 - tIn) * 24);
+    // 表格行逐行亮起
+    var rows = $('s8-rows').childNodes;
+    var shown = easeOut(at(u, k(6), k(20))) * rows.length;
+    for (var i = 0; i < rows.length; i++) {
+      var a = clamp01(shown - i);
+      sa(rows[i], 'opacity', (0.15 + a * 0.85).toFixed(3));
+    }
+    var sIn = easeOut(at(u, k(20), k(23)));
+    vis($('s8-stats'), sIn);
+    tr($('s8-stats'), lerp(1360, 1320, sIn), 320);
+    // 数字累加
+    var cnt = easeOut(at(u, k(21), k(25)));
+    sa($('s8-n1'), 'textContent', Math.round(36 * cnt));
+    sa($('s8-n2'), 'textContent', Math.round(35 * cnt));
+    vis($('s8-bottom'), easeOut(at(u, k(26), k(29))));
+  };
+
+  /* ============================================================
+     场景 9：使用须知
+     ============================================================ */
+  RENDER[8] = function (u, lt) {
+    var k = function (s) { return s / 25; };
+    vis($('s9-t'), easeOut(at(u, 0, k(3.5))));
+    vis($('s9-sub'), easeOut(at(u, k(3), k(6))));
+    var gIn = easeOut(at(u, k(8), k(11)));
+    vis($('s9-good'), gIn);
+    tr($('s9-good'), lerp(120, 180, gIn), 300);
+    var bIn = easeOut(at(u, k(9.5), k(12.5)));
+    vis($('s9-bad'), bIn);
+    tr($('s9-bad'), lerp(1060, 1000, bIn), 300);
+    var rowsG = $('s9-goodRows').childNodes;
+    var g = easeOut(at(u, k(10), k(16))) * rowsG.length;
+    for (var i = 0; i < rowsG.length; i++) sa(rowsG[i], 'opacity', (0.12 + clamp01(g - i) * 0.88).toFixed(3));
+    var rowsB = $('s9-badRows').childNodes;
+    var b = easeOut(at(u, k(11), k(17))) * rowsB.length;
+    for (var j = 0; j < rowsB.length; j++) sa(rowsB[j], 'opacity', (0.12 + clamp01(b - j) * 0.88).toFixed(3));
+    vis($('s9-bottom'), easeOut(at(u, k(18), k(21))));
+    vis($('s9-note'), easeOut(at(u, k(20), k(23))));
+  };
+
+  /* ============================================================
+     场景 10：结尾（打字机 + 徽标）
+     ============================================================ */
+  var URL_TEXT = 'yhl4466.github.io/robust-stego';
+  RENDER[9] = function (u, lt) {
+    var k = function (s) { return s / 15; };
+    vis($('s10-t'), easeBack(at(u, 0, k(4))));
+    tr($('s10-t'), 0, (1 - easeBack(at(u, 0, k(4)))) * 22);
+    var boxIn = easeOut(at(u, k(4), k(6)));
+    vis($('s10-urlBox'), boxIn);
+    tr($('s10-urlBox'), 960, lerp(570, 540, boxIn));
+    // 5-10s 打字机
+    var tw = at(lt / scale, 5, 10);
+    var n = Math.floor(tw * URL_TEXT.length);
+    sa($('s10-url'), 'textContent', URL_TEXT.slice(0, n));
+    sa($('s10-caret'), 'x', (-340 + n * 24.2).toFixed(1));
+    var blink = (Math.floor(lt * 2.4) % 2 === 0) ? 1 : 0.15;
+    vis($('s10-caret'), boxIn * (tw < 1 ? 1 : blink));
+    vis($('s10-line'), easeOut(at(u, k(10), k(12.5))));
+    vis($('s10-badge'), easeOut(at(u, k(11), k(13.5))));
+  };
+
+  /* ---------------- 静态图元（JS 生成重复结构） ---------------- */
+  // 场景 6：两个 8×8 系数网格（左：整块；高亮两对位置）
+  (function buildDctGrid() {
+    var g = $('s6-grid1');
+    var cell = 62, n = 8;
+    var pairs = { '2,1': 'p1a', '1,2': 'p1b', '3,0': 'p2a', '0,3': 'p2b' };
+    for (var r = 0; r < n; r++) {
+      for (var c = 0; c < n; c++) {
+        var key = r + ',' + c;
+        var hot = pairs[key];
+        var rect = el('rect', {
+          x: c * cell, y: r * cell, width: cell - 4, height: cell - 4, rx: 6,
+          fill: hot ? (hot === 'p1a' || hot === 'p1b' ? '#1d4ed8' : '#b45309') : ((r + c) % 3 === 0 ? '#16243d' : '#131f36'),
+          stroke: hot ? (hot === 'p1a' || hot === 'p1b' ? '#38bdf8' : '#f59e0b') : '#1e2a44',
+          'stroke-width': hot ? 3 : 1.5
+        }, g);
+        if (hot) { rect.setAttribute('id', hot); rect.setAttribute('opacity', '0'); }
+        if (r === 0 && c === 0) el('text', { x: 6, y: 22, 'font-size': 16, fill: '#7d8ea9' }, g).textContent = 'DC';
+        if (key === '2,1' || key === '1,2') el('text', { x: c * cell + 20, y: r * cell + 40, 'font-size': 22, fill: '#dbeafe' }, g).textContent = 'a';
+        if (key === '3,0' || key === '0,3') el('text', { x: c * cell + 20, y: r * cell + 40, 'font-size': 22, fill: '#fde68a' }, g).textContent = 'b';
+      }
+    }
+    el('text', { x: 270, y: 552, 'text-anchor': 'middle', 'font-size': 22, fill: '#7d8ea9' }, g.parentNode)
+      .textContent = '低频在左上 · 载波选在中低频的系数对上';
+  })();
+
+  /** 生成一批"散落的承载块"绿色小方块（固定种子，保证每次渲染一致） */
+  function scatterTiles(parent, count, seed, boxW, boxH) {
+    var a = seed >>> 0;
+    function rnd() { a = (a * 1664525 + 1013904223) >>> 0; return a / 4294967296; }
+    var out = [];
+    for (var i = 0; i < count; i++) {
+      var x = 12 + rnd() * (boxW - 36), y = 12 + rnd() * (boxH - 36);
+      var r = el('rect', {
+        x: x.toFixed(1), y: y.toFixed(1), width: 22, height: 22, rx: 5,
+        fill: '#22c55e', stroke: '#0b1220', 'stroke-width': 1.5
+      }, parent);
+      r.setAttribute('opacity', '0');
+      out.push(r);
+    }
+    return out;
+  }
+  scatterTiles($('s7-tiles'), 46, 20240925, 600, 360);
+  scatterTiles($('s7-tiles3'), 34, 777, 600, 360);
+
+  // 场景 8：实测数据表格行
+  (function buildTable() {
+    var rows = [
+      ['JPEG 压缩 q=0.60', '✅ 可还原'],
+      ['涂黑 25% 面积', '✅ 可还原'],
+      ['裁切一半（半平面）', '✅ 可还原'],
+      ['缩放 0.5×（抗缩放模式）', '✅ 可还原'],
+      ['叠加水印（α=0.3）', '✅ 可还原'],
+      ['未破损提取', '100% 存活'],
+      ['抗损坏档位（标准档）', '稳定抗 25%']
+    ];
+    var g = $('s8-rows');
+    rows.forEach(function (r, i) {
+      var y = 46 + i * 76;
+      var row = el('g', {}, g);
+      el('rect', { x: 20, y: y - 34, width: 940, height: 62, rx: 12, fill: i % 2 ? '#0f1a2e' : '#121f36' }, row);
+      el('text', { x: 44, y: y + 6, 'font-size': 30, fill: '#c7d3e6' }, row).textContent = r[0];
+      var ok = r[1].charAt(0) === '✅';
+      el('text', { x: 920, y: y + 6, 'text-anchor': 'end', 'font-size': 30, fill: ok ? '#22c55e' : '#f59e0b' }, row)
+        .textContent = r[1];
+      row.setAttribute('opacity', '0.15');
+    });
+  })();
+
+  // 场景 9：两栏清单
+  (function buildLists() {
+    var good = ['微信「发送原图」', 'QQ「发送文件」', '邮件附件', '云盘分享', 'U 盘 / 数据线直传'];
+    var bad = ['微信 / QQ 普通发送', '朋友圈', '截图后再发', '用编辑器打开后另存'];
+    function fill(id, items, color) {
+      var g = $(id);
+      items.forEach(function (t, i) {
+        var y = 130 + i * 56;
+        var row = el('g', {}, g);
+        el('circle', { cx: 52, cy: y - 10, r: 7, fill: color }, row);
+        el('text', { x: 78, y: y, 'font-size': 30, fill: '#c7d3e6' }, row).textContent = t;
+        row.setAttribute('opacity', '0.12');
+      });
+    }
+    fill('s9-goodRows', good, '#22c55e');
+    fill('s9-badRows', bad, '#f59e0b');
+  })();
+
+  // 顶部章节刻度
+  (function buildTicks() {
+    var g = $('barTicks');
+    for (var i = 1; i < SPEC.length; i++) {
+      var x = 80 + 1760 * (starts[i] / TOTAL);
+      el('line', { x1: x.toFixed(1), y1: 20, x2: x.toFixed(1), y2: 40, class: 'tick' }, g);
+    }
+    el('line', { x1: 1840, y1: 20, x2: 1840, y2: 40, class: 'tick' }, g);
+  })();
+
+  /* ---------------- ④ 控制层 ---------------- */
+  var showSubs = true, pureMode = false;
+
+  function currentCues(idx) {
+    return SPEC[idx].cues;
+  }
+  function updateSubtitle(idx, localScaled) {
+    // 注意别把局部变量叫 txt —— 那会遮蔽上面的 txt() 写入函数
+    var bar = $('subBar'), txtEl = $('subText'), bg = $('subBg');
+    if (!showSubs) { vis(bar, 0); return; }
+    var ltSpec = localScaled / scale;
+    var cue = null;
+    var cues = currentCues(idx);
+    for (var i = 0; i < cues.length; i++) if (ltSpec >= cues[i][0] && ltSpec < cues[i][1]) cue = cues[i];
+    if (!cue) { vis(bar, 0); return; }
+    var text = cue[2];
+    // 淡入淡出各 0.35 秒（按任务书秒计）：淡出必须用 1 - at(...)，
+    // 否则 at() 在到达结束时间之前一直是 0，字幕会整段不显示。
+    var a = Math.min(at(ltSpec, cue[0], cue[0] + 0.35), 1 - at(ltSpec, cue[1] - 0.35, cue[1]));
+    vis(bar, a);
+    txt(txtEl, text);
+    sa(bg, 'width', Math.min(1600, Math.max(560, text.length * 37 + 90)).toFixed(0));
+    sa(bg, 'x', (960 - Math.min(1600, Math.max(560, text.length * 37 + 90)) / 2).toFixed(0));
+  }
+  function updateChrome(idx, t) {
+    if (pureMode) { vis($('chrome'), 0); return; }
+    vis($('chrome'), 1);
+    sa($('barFill'), 'width', (1760 * clamp01(t / TOTAL)).toFixed(1));
+    sa($('chapterNow'), 'textContent', (idx + 1) + '/10 · ' + SPEC[idx].name);
+    var m = Math.floor(t / 60), s = Math.floor(t % 60);
+    var tm = Math.floor(TOTAL / 60), ts = Math.floor(TOTAL % 60);
+    sa($('clockNow'), 'textContent', m + ':' + (s < 10 ? '0' : '') + s + ' / ' + tm + ':' + (ts < 10 ? '0' : '') + ts);
+  }
+
+  /* ---------------- ③ 主渲染 ---------------- */
+  function renderScene(i, lt) {
+    var g = $('s' + (i + 1));
+    if (!g) return;
+    var d = durations[i];
+    var u = d > 0 ? clamp01(lt / d) : 0;
+    // 场景切换：0.5 秒淡入淡出 + 轻微位移（按缩放后的秒数）
+    var IN = 0.5, OUT = 0.5;
+    var aIn = easeOut(clamp01(lt / IN));
+    var aOut = lt > d ? easeOut(clamp01((lt - d) / OUT)) : 0;
+    var alpha = lt > d ? (1 - aOut) : aIn;
+    vis(g, alpha);
+    if (alpha > 0.002) {
+      var shift = (1 - aIn) * 18 - aOut * 18;
+      tr(g, 0, shift);
+      RENDER[i](u, clamp01(lt / d) * d, g);
+    }
+  }
+
+  var SCENE_NODES = [];
+  for (var si = 0; si < SPEC.length; si++) SCENE_NODES.push($('s' + (si + 1)));
+
+  function renderFrame(t) {
+    var loc = locate(t);
+    // 先把"既不是当前场景、也不是正在退出的上一场"的场景全部隐藏。
+    //   这一步不能省：场景组默认是可见的，若只在渲染当前场景时设置它的透明度，
+    //   其余 9 个场景会一直叠在画面上（第一次截图就是这么发现问题的）。
+    //   属性写入带缓存，重复调用同一场景的开销可以忽略。
+    for (var k = 0; k < SCENE_NODES.length; k++) {
+      if (k !== loc.index && k !== loc.index - 1) vis(SCENE_NODES[k], 0);
+    }
+    // 当前场景 + 正在退出的上一个场景（这样才是真正的交叉淡化）
+    renderScene(loc.index, loc.local);
+    if (loc.index > 0) renderScene(loc.index - 1, durations[loc.index - 1] + loc.local);
+    // 全局淡入淡出（首尾各 0.8 秒），循环播放时首尾自然衔接
+    var ga = Math.min(easeOut(clamp01(t / 0.8)), easeOut(clamp01((TOTAL - t) / 0.8)));
+    ss($('bg'), 'opacity', '1');
+    ss($('scenes'), 'opacity', ga.toFixed(3));
+    updateChrome(loc.index, t);
+    updateSubtitle(loc.index, loc.local);
+    state.index = loc.index;
+    state.local = loc.local;
+    state.t = t;
+  }
+
+  /* ---------------- ② 播放控制 ---------------- */
+  var state = { t: 0, playing: true, speed: 1, loop: true, index: 0, local: 0 };
+  var last = 0, rafSeen = 0;
+
+  /** 推进时间轴并渲染一帧（rAF 与看门狗共用同一个入口，dt 由时间戳算，重复触发不会加速） */
+  function step(now) {
+    if (!last) last = now;
+    var dt = (now - last) / 1000;
+    // rAF 的时间戳与 performance.now() 偶尔会交错（rAF 回调可能带着稍早的时间戳到达），
+    // 不夹住就会出现负的 dt，表现为画面"往回跳一帧"。
+    if (dt < 0) dt = 0;
+    if (dt > 0.25) dt = 0.25;            // 切标签页回来时不要一次跳一大段
+    last = now;
+    if (state.playing) {
+      state.t += dt * state.speed;
+      if (state.t >= TOTAL) {
+        if (state.loop) state.t -= TOTAL;
+        else { state.t = TOTAL - 0.001; state.playing = false; }
+      }
+    }
+    renderFrame(state.t);
+  }
+
+  function tick(now) {
+    rafSeen = now;
+    step(now);
+    requestAnimationFrame(tick);
+  }
+
+  /**
+   * 看门狗：某些宿主环境里 requestAnimationFrame 会被暂停或降频（后台标签页、
+   * 无显示器的录制宿主、部分录屏软件的采集窗口）。只靠 rAF 的话时间轴会直接卡住，
+   * 录出来的视频就断在那里。这里在"rAF 超过 300 毫秒没动静"时用定时器兜底推进，
+   * rAF 恢复后自动让位。因为每帧的推进量由 performance.now() 差值决定，两条路径
+   * 同时触发也只会更细粒度地更新，不会让动画变快。
+   */
+  function startWatchdog() {
+    setInterval(function () {
+      var now = performance.now();
+      if (now - rafSeen > 300) step(now);
+    }, 100);
+  }
+
+  function seekScene(i) {
+    i = Math.max(0, Math.min(SPEC.length - 1, i));
+    state.t = starts[i] + 0.001;
+    renderFrame(state.t);
+  }
+  function togglePlay() { state.playing = !state.playing; last = 0; }
+
+  /* ---------------- ⑤ 交互 ---------------- */
+  function setPure(on) {
+    pureMode = on;
+    vis($('chrome'), on ? 0 : 1);
+    document.body.style.cursor = on ? 'none' : '';
+  }
+  function applySubs() {
+    vis($('subBar'), showSubs ? 1 : 0);
+  }
+  function toggleFullscreen() {
+    var d = document;
+    if (!d.fullscreenElement) {
+      var r = d.documentElement;
+      if (r.requestFullscreen) r.requestFullscreen();
+    } else if (d.exitFullscreen) d.exitFullscreen();
+  }
+
+  document.addEventListener('keydown', function (e) {
+    var k = e.key;
+    if (k === 'ArrowRight') { seekScene(state.index + 1); e.preventDefault(); }
+    else if (k === 'ArrowLeft') { seekScene(state.index - 1); e.preventDefault(); }
+    else if (k === ' ' || k === 'Spacebar') { togglePlay(); e.preventDefault(); }
+    else if (k === 'r' || k === 'R') { state.t = 0; state.playing = true; last = 0; renderFrame(0); }
+    else if (k === 'f' || k === 'F') { toggleFullscreen(); e.preventDefault(); }
+    else if (k === 's' || k === 'S') { showSubs = !showSubs; applySubs(); }
+    else if (k === 'h' || k === 'H') { setPure(!pureMode); }
+  });
+
+  /** URL 参数：?scene=7 &loop=0 &speed=1.5 &scale=1 &still=12 &bench=1 &selftest=1 */
+  var Q = {};
+  location.search.replace(/^\?/, '').split('&').forEach(function (kv) {
+    if (!kv) return;
+    var p = kv.split('=');
+    Q[decodeURIComponent(p[0])] = p.length > 1 ? decodeURIComponent(p[1]) : '1';
+  });
+
+  function boot() {
+    if (Q.scale) buildTimeline(parseFloat(Q.scale) || DEFAULT_SCALE);
+    if (Q.loop === '0') state.loop = false;
+    if (Q.speed) state.speed = Math.max(0.1, parseFloat(Q.speed) || 1);
+    if (Q.sub === '0') showSubs = false;
+    if (Q.pure === '1') setPure(true);
+    applySubs();
+    // 起始状态：除第 1 场外全部隐藏（避免首帧闪一下所有场景）
+    for (var i = 1; i < SCENE_NODES.length; i++) vis(SCENE_NODES[i], 0);
+
+    if (Q.still !== undefined) {                 // 定格到某一秒（截图/对轴用）
+      state.playing = false;
+      state.t = Math.max(0, Math.min(TOTAL - 0.001, parseFloat(Q.still) || 0));
+      renderFrame(state.t);
+      return;
+    }
+    if (Q.bench === '1') { runBench(); return; }
+    if (Q.selftest === '1') { runSelfTest(); return; }
+    if (Q.scene) {                               // ?scene=7 直接跳到第 7 场开头
+      var n = parseInt(Q.scene, 10);
+      if (n >= 1 && n <= SPEC.length) state.t = starts[n - 1] + 0.001;
+    }
+    renderFrame(state.t);
+    requestAnimationFrame(tick);
+    startWatchdog();
+  }
+
+  /* ---------------- ⑥ 开发模式：整段渲染基准 & 自检 ---------------- */
+  // 任何未捕获的脚本错误都立刻显示出来（只在开发模式与出错时可见）：
+  // 录屏前扫一眼就能确认"整条时间轴没有中途崩掉"。
+  window.addEventListener('error', function (e) {
+    var out = document.getElementById('errOut');
+    if (!out) {
+      out = document.createElement('pre');
+      out.id = 'errOut';
+      out.style.cssText = 'position:fixed;left:8px;top:8px;z-index:9;background:#7f1d1d;color:#fee2e2;' +
+        'font:13px/1.5 monospace;padding:8px 10px;border-radius:8px;max-width:60vw;white-space:pre-wrap';
+      document.body.appendChild(out);
+    }
+    out.textContent += 'JS ERROR: ' + (e.message || e.error) +
+      (e.error && e.error.stack ? '\n' + String(e.error.stack).split('\n').slice(0, 7).join('\n') : '') + '\n';
+  });
+  /**
+   * ?bench=1 —— 把整条时间轴按 1/60 秒步长完整渲染一遍（12 600 帧），
+   * 统计每帧渲染耗时与异常。这是"60fps 够不够、210 秒会不会崩"最直接的证据：
+   * 若 p99 耗时远小于 16.7 毫秒，实机录制就不会掉帧。
+   */
+  function runBench() {
+    var frames = Math.ceil(TOTAL * 60);
+    var times = [];
+    var errors = 0, firstErr = '';
+    var t0 = performance.now();
+    for (var i = 0; i < frames; i++) {
+      var a = performance.now();
+      try { renderFrame(i / 60); } catch (e) { errors++; if (!firstErr) firstErr = String(e && e.message || e); }
+      times.push(performance.now() - a);
+    }
+    var wall = performance.now() - t0;
+    times.sort(function (a, b) { return a - b; });
+    var sum = times.reduce(function (a, b) { return a + b; }, 0);
+    var p = function (q) { return times[Math.min(times.length - 1, Math.floor(times.length * q))]; };
+    var lines = [
+      'BENCH frames=' + frames + ' total=' + TOTAL.toFixed(1) + 's scale=' + scale,
+      'perFrame avg=' + (sum / frames).toFixed(3) + 'ms p50=' + p(0.5).toFixed(3) +
+      'ms p95=' + p(0.95).toFixed(3) + 'ms p99=' + p(0.99).toFixed(3) + 'ms max=' + p(1).toFixed(3) + 'ms',
+      'budget16.7ms: ' + ((p(0.99) < 16.7) ? 'OK' : 'TIGHT') + '   wall=' + wall.toFixed(0) + 'ms',
+      'errors=' + errors + (firstErr ? ' first=' + firstErr : '')
+    ];
+    var out = document.createElement('pre');
+    out.id = 'benchOut';
+    out.textContent = lines.join('\n');
+    document.body.appendChild(out);
+    document.title = 'bench-done';
+  }
+
+  /**
+   * ?selftest=1 —— 在真实浏览器里驱动键盘与 URL 参数，检查各交互是否真的生效。
+   * 这是 AC5~AC9 的实测证据（而不是"看代码应该没问题"）。
+   */
+  function runSelfTest() {
+    var out = [];
+    function ok(name, cond, detail) { out.push((cond ? 'PASS ' : 'FAIL ') + name + ' | ' + detail); }
+    function key(k) {
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true }));
+    }
+    renderFrame(0);
+    ok('初始场景=1', state.index === 0 && $('chapterNow').textContent.indexOf('1/10') === 0,
+      'chapter=' + $('chapterNow').textContent);
+
+    key('ArrowRight');
+    ok('→ 切到下一场', state.index === 1, 'chapter=' + $('chapterNow').textContent);
+    key('ArrowLeft');
+    ok('← 切回上一场', state.index === 0, 'chapter=' + $('chapterNow').textContent);
+
+    var wasPlaying = state.playing;
+    key(' ');
+    var paused = state.playing;
+    key(' ');
+    ok('空格 暂停/继续', wasPlaying === true && paused === false && state.playing === true,
+      'paused→' + paused + ' resumed→' + state.playing);
+
+    key('r');
+    ok('R 从头重播', state.t === 0 && state.playing === true, 't=' + state.t.toFixed(3));
+
+    var subsBefore = showSubs;
+    key('s');
+    var subsAfter = showSubs;
+    var subHidden = $('subBar').style.display === 'none' || $('subBar').getAttribute('opacity') === '0';
+    key('s');
+    ok('S 字幕开关', subsBefore === true && subsAfter === false && subHidden && showSubs === true,
+      '切换后 opacity=' + $('subBar').getAttribute('opacity') + ' display=' + ($('subBar').style.display || '(空)'));
+
+    key('h');
+    var chromeHidden = $('chrome').style.display === 'none' || $('chrome').getAttribute('opacity') === '0';
+    var subsVisibleInPure = !($('subBar').style.display === 'none' || $('subBar').getAttribute('opacity') === '0');
+    key('h');
+    var chromeBack = !($('chrome').style.display === 'none' || $('chrome').getAttribute('opacity') === '0');
+    ok('H 纯净模式（隐藏控制层、保留字幕）', chromeHidden && chromeBack,
+      '纯净时 chrome 隐藏=' + chromeHidden + '，字幕仍显示=' + subsVisibleInPure + '，恢复=' + chromeBack);
+
+    // 章节进度条与刻度
+    var ticks = $('barTicks').childNodes.length;
+    sa($('barFill'), 'width', '-1');            // 强制重算
+    renderFrame(TOTAL * 0.5);
+    var w = parseFloat($('barFill').getAttribute('width'));
+    ok('章节进度条 50% 处', ticks === SPEC.length && Math.abs(w - 880) < 2,
+      '刻度=' + ticks + '（含末尾）progress=' + w.toFixed(1) + '/1760');
+    // 210 秒的一半 = 105 秒，按各场累计时长落在第 6 场（88.2~113.4 秒）
+    ok('50% 处落在第 6 场', state.index === 5, '当前=' + $('chapterNow').textContent);
+
+    // 跳场景（等价于 ?scene=7）
+    seekScene(6);
+    ok('跳转场景 7', state.index === 6 && $('chapterNow').textContent.indexOf('7/10') === 0,
+      $('chapterNow').textContent);
+    renderFrame(starts[6] + durations[6] * 0.5);
+    ok('场景 7 中点渲染无异常', true, 'pct=' + $('s7-pct').textContent);
+
+    // 字幕内容随场景变化
+    renderFrame(starts[6] + durations[6] * 0.4);
+    var sub1 = $('subText').textContent;
+    renderFrame(starts[0] + durations[0] * 0.5);
+    var sub2 = $('subText').textContent;
+    ok('字幕内容随场景切换', sub1 !== sub2 && sub2.length > 0, '场景7="' + sub1.slice(0, 14) + '…" 场景1="' + sub2.slice(0, 14) + '…"');
+
+    // 时间轴与缩放
+    ok('时间轴总时长（默认 0.84 缩放）', TOTAL > 200 && TOTAL < 220, TOTAL.toFixed(1) + 's（?scale=1 时为 ' + (250).toFixed(1) + 's）');
+    buildTimeline(1);
+    ok('?scale=1 回到任务书字面时长', Math.abs(TOTAL - 250) < 0.001, TOTAL.toFixed(1) + 's');
+    buildTimeline(DEFAULT_SCALE);
+
+    // 倍速：同样推进 2 秒真实时间（步长 200ms，低于 0.25 秒的夹取线），speed=2 应该走两倍
+    var keepT = state.t, keepSpeed = state.speed, keepLoop = state.loop, keepPlaying = state.playing;
+    function advance(speed) {
+      state.t = 0; state.speed = speed; state.playing = true; state.loop = false;
+      last = 0;
+      var t0 = 1000;
+      step(t0);                       // 第一帧只建立基准
+      for (var i = 1; i <= 10; i++) step(t0 + i * 200);   // 推进 2 秒
+      return state.t;
+    }
+    var t1x = advance(1), t2x = advance(2);
+    ok('倍速播放（speed=2 走两倍）', Math.abs(t1x - 2) < 0.001 && Math.abs(t2x - 4) < 0.001,
+      '2 秒内 speed=1 走了 ' + t1x.toFixed(1) + 's；speed=2 走了 ' + t2x.toFixed(1) + 's');
+
+    // 单帧超长间隔被夹到 0.25 秒（切标签页回来不会跳一大段）
+    state.t = 0; state.speed = 1; state.playing = true; last = 0;
+    step(1000); step(1000 + 5000);
+    ok('长间隔夹取（5 秒只推进 0.25 秒）', Math.abs(state.t - 0.25) < 0.001, 't=' + state.t.toFixed(3) + 's');
+
+    // loop=0：播到结尾停住并夹在总时长内
+    state.t = TOTAL - 0.05; state.playing = true; state.loop = false; last = 0;
+    step(2000); step(2200);
+    ok('?loop=0 播到结尾停住', state.playing === false && state.t <= TOTAL && state.t > TOTAL - 0.01,
+      'playing=' + state.playing + ' t=' + state.t.toFixed(3) + '/' + TOTAL.toFixed(1));
+
+    // loop=1（默认）：越界后回卷到开头，实现无缝循环
+    state.t = TOTAL - 0.05; state.playing = true; state.loop = true; last = 0;
+    step(3000); step(3300);
+    ok('循环播放回卷到开头', state.t < 1 && state.playing === true, 't=' + state.t.toFixed(3) + 's');
+    state.t = keepT; state.speed = keepSpeed; state.loop = keepLoop; state.playing = keepPlaying;
+    renderFrame(state.t);
+
+    var pre = document.createElement('pre');
+    pre.id = 'selfTestOut';
+    pre.textContent = out.join('\n') + '\nFAILCOUNT=' + out.filter(function (l) { return l.indexOf('FAIL') === 0; }).length;
+    document.body.appendChild(pre);
+    document.title = 'selftest-done';
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

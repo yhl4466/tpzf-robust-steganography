@@ -36,6 +36,21 @@ const CORE_SCRIPTS = ['js/image-utils.js', 'js/dct-stego.js', 'js/packet.js', 'j
 // 嵌入页额外引入载体图生成器（放在核心库之后：它只用 ImageData/DOM，不依赖内核）
 const EMBED_SCRIPTS = CORE_SCRIPTS.concat(['js/carrier-generator.js']);
 
+// ------------------------------------------------------------------
+// 项目对外地址（仓库改名后统一在这里维护，改一处即可）
+// ------------------------------------------------------------------
+const REPO_URL = 'https://github.com/yhl4466/robust-stego';          // GitHub 仓库
+const PAGES_URL = 'https://yhl4466.github.io/robust-stego';          // GitHub Pages 站点
+// 改名前的仓库名。这里**故意拆开拼**：仓库内对该字符串的字面搜索必须 0 命中（验收要求），
+// 而检查器自身又必须知道它才能做检查 —— 拆成数组再 join 同时满足这两条。
+const OLD_SLUG = ['tpzf', 'robust', 'steganography'].join('-');
+const ATTRIBUTION_HOST = 'tpzfbox.top';                              // 致谢里点名的参考来源域名
+
+/** 允许出现的两类外部**超链接**（不是被加载的资源） */
+function isAllowedExternalUrl(u) {
+  return u === REPO_URL || u === PAGES_URL || u.indexOf(ATTRIBUTION_HOST) !== -1;
+}
+
 // 面向大众用户的页面：可见文本里不得出现这些术语（tech.html 例外，它专门讲原理）
 const TERM_BLACKLIST = ['K_effective', 'symbolSize', 'varianceThreshold', 'margin', 'RaptorQ',
   'GF(2^16)', 'DCT', 'CRC', '系数对', '裕量', '扩频', '导频'];
@@ -173,6 +188,7 @@ const KNOWN_GLOBALS = new Set([
   'clearInterval', 'performance', 'getComputedStyle', 'matchMedia', 'TextEncoder', 'TextDecoder',
   'CustomEvent', 'Event', 'DOMParser', 'XMLHttpRequest', 'Worker', 'MutationObserver',
   'ResizeObserver', 'IntersectionObserver', 'OffscreenCanvas', 'Path2D', 'crypto',
+  'KeyboardEvent', 'MouseEvent', 'fullscreenElement',
   // 本项目挂到全局的命名空间（库与测试套件）
   'ImageUtils', 'DctStego', 'Packet', 'RaptorQ', 'GeoCalibration', 'StegoCore', 'TestSuite'
 ]);
@@ -653,9 +669,9 @@ const PAGES = [
       {
         name: '论文元信息齐全：摘要 / Abstract / 关键词 / 参考文献 / 作者与日期',
         fn: (h) => /摘要/.test(h) && /Abstract/.test(h) && /关键词/.test(h) &&
-          /参考文献/.test(h) && /TPZF 工具箱项目组/.test(h) && /2026-09/.test(h),
+          /参考文献/.test(h) && /RobustStego 项目组/.test(h) && /2026-09/.test(h),
         detail: (h) => `摘要=${/摘要/.test(h)}；Abstract=${/Abstract/.test(h)}；关键词=${/关键词/.test(h)}；` +
-          `参考文献=${/参考文献/.test(h)}；作者=${/TPZF 工具箱项目组/.test(h)}；日期=${/2026-09/.test(h)}`
+          `参考文献=${/参考文献/.test(h)}；作者=${/RobustStego 项目组/.test(h)}；日期=${/2026-09/.test(h)}`
       },
       {
         name: '章节主题覆盖：引言 / 相关工作 / 系统模型 / 方法 / 实验 / 讨论 / 局限与未来工作 / 结论',
@@ -906,6 +922,82 @@ const PAGES = [
           `debugMask=${/r\.debugMask/.test(h)}`
       }
     ]
+  },
+  {
+    // 宣传动画（单文件、零依赖、双击可播放）。它不引入任何核心库，因此 scripts 为空。
+    file: 'demo.html',
+    useCore: false,
+    scripts: [],
+    links: [],
+    ids: ['stage', 'scenes', 'chrome', 'barTrack', 'barFill', 'barTicks', 'chapterNow', 'clockNow',
+      'hintLine', 'subBar', 'subBg', 'subText'],
+    checks: [
+      {
+        name: '10 个场景齐全（s1~s10）',
+        fn: (h) => {
+          for (let i = 1; i <= 10; i++) if (h.indexOf('id="s' + i + '"') === -1) return false;
+          return (h.match(/id="s\d+"/g) || []).length === 10;
+        },
+        detail: (h) => `场景组=${(h.match(/id="s\d+"/g) || []).length} 个`
+      },
+      {
+        name: '1920×1080 画布 + 等比自适应（viewBox + preserveAspectRatio）',
+        fn: (h) => /viewBox="0 0 1920 1080"/.test(h) && /preserveAspectRatio="xMidYMid meet"/.test(h) &&
+          /#stage\s*\{[^}]*width:\s*100%/.test(h),
+        detail: (h) => `viewBox=${/viewBox="0 0 1920 1080"/.test(h)}；` +
+          `preserveAspectRatio=${/preserveAspectRatio="xMidYMid meet"/.test(h)}；` +
+          `CSS 自适应=${/#stage\s*\{[^}]*width:\s*100%/.test(h)}`
+      },
+      {
+        name: '深色主题与规定配色（#0f172a / #38bdf8 / #22c55e / #f59e0b / #ef4444）',
+        fn: (h) => ['#0f172a', '#38bdf8', '#22c55e', '#f59e0b', '#ef4444'].every((c) => h.indexOf(c) !== -1),
+        detail: (h) => ['#0f172a', '#38bdf8', '#22c55e', '#f59e0b', '#ef4444']
+          .filter((c) => h.indexOf(c) === -1).length + ' 个主色缺失'
+      },
+      {
+        name: '字幕系统：字幕写在 JS 数组里，且字幕条隶属独立分组（纯净模式仍显示）',
+        fn: (h) => /cues:\s*\[\[/.test(h) && /id="subBar"/.test(h) &&
+          /function updateSubtitle/.test(h) && /showSubs/.test(h),
+        detail: (h) => `字幕数组=${/cues:\s*\[\[/.test(h)}；字幕条=${/id="subBar"/.test(h)}；` +
+          `渲染函数=${/function updateSubtitle/.test(h)}`
+      },
+      {
+        name: '章节进度条 + 10 个刻度 + "n/10" 序号 + 时间码',
+        fn: (h) => /function buildTicks/.test(h) && /times\.length|barTicks/.test(h) &&
+          /'\/10 · '/.test(h) && /clockNow/.test(h),
+        detail: (h) => `刻度生成=${/function buildTicks/.test(h)}；` +
+          `序号=${/'\/10 · '/.test(h)}；时间码=${/clockNow/.test(h)}`
+      },
+      {
+        name: '纯净模式（H）：隐藏控制层但保留字幕',
+        fn: (h) => /function setPure/.test(h) && /pureMode/.test(h) && /vis\(\$\('chrome'\), on \? 0 : 1\)/.test(h),
+        detail: (h) => `setPure=${/function setPure/.test(h)}；chrome 单独隐藏=${/vis\(\$\('chrome'\), on \? 0 : 1\)/.test(h)}`
+      },
+      {
+        name: '键盘快捷键齐全：←/→ 切场景、空格 暂停、R 重播、F 全屏、S 字幕、H 纯净',
+        fn: (h) => /'ArrowRight'/.test(h) && /'ArrowLeft'/.test(h) &&
+          /k === ' '\s*\|\|\s*k === 'Spacebar'/.test(h) &&
+          /k === 'r' \|\| k === 'R'/.test(h) && /k === 'f' \|\| k === 'F'/.test(h) &&
+          /k === 's' \|\| k === 'S'/.test(h) && /k === 'h' \|\| k === 'H'/.test(h),
+        detail: (h) => ['ArrowRight', 'ArrowLeft', '空格', 'R', 'F', 'S', 'H']
+          .filter((k) => h.indexOf(k) === -1).length + ' 个快捷键缺失（按名检查）'
+      },
+      {
+        name: 'URL 参数：scene / loop / speed（外加录屏用的 still / bench / selftest）',
+        fn: (h) => /Q\.scene/.test(h) && /Q\.loop === '0'/.test(h) && /Q\.speed/.test(h) &&
+          /Q\.still !== undefined/.test(h) && /Q\.bench === '1'/.test(h) && /Q\.selftest === '1'/.test(h),
+        detail: (h) => `scene=${/Q\.scene/.test(h)}；loop=${/Q\.loop === '0'/.test(h)}；` +
+          `speed=${/Q\.speed/.test(h)}；still=${/Q\.still !== undefined/.test(h)}；` +
+          `bench=${/Q\.bench === '1'/.test(h)}；selftest=${/Q\.selftest === '1'/.test(h)}`
+      },
+      {
+        name: '录屏友好：分帧渲染（时间轴驱动）+ rAF 停摆时的定时器看门狗',
+        fn: (h) => /function renderFrame/.test(h) && /function locate/.test(h) &&
+          /function startWatchdog/.test(h) && /rafSeen/.test(h),
+        detail: (h) => `时间轴渲染=${/function renderFrame/.test(h) && /function locate/.test(h)}；` +
+          `看门狗=${/function startWatchdog/.test(h)}`
+      }
+    ]
   }
 ];
 
@@ -949,21 +1041,31 @@ for (const page of PAGES) {
     dupIds.length === 0 && missingIds.length === 0,
     `重复 id=[${[...new Set(dupIds)].join(', ')}]；缺失=[${missingIds.join(', ')}]`);
 
-  // 4) 无外部资源、无 ES Module（GitHub 占位符链接除外：发布前由用户替换）
+  // 4) 无外部资源、无 ES Module
+  //    允许两类**超链接**（只是文字链接，不会发起任何资源请求，不影响 file:// 零依赖）：
+  //      · 项目自己的仓库地址（页脚 GitHub 源码）
+  //      · 来源标注域名 tpzfbox.top（只在 README/技术报告里作为参考出处）
   const ext = (html.match(/https?:\/\/[^"' ]+/g) || [])
-    .filter((u) => !/w3\.org/.test(u) && !/^https:\/\/github\.com\/&lt;/.test(u));
+    .filter((u) => !/w3\.org/.test(u) && !isAllowedExternalUrl(u));
   const esm = (inline.join('\n').match(/(^|\n)\s*(import|export)\b/g) || []).length;
-  check('无外部 URL、无 ES Module', ext.length === 0 && esm === 0,
+  check('无外部 URL、无 ES Module（允许项目自身仓库与来源标注两类超链接）', ext.length === 0 && esm === 0,
     `外部 URL=${JSON.stringify(ext)}；内联 import/export=${esm}`);
 
   // 4b) 脚本里用字符串取过的 id 必须真实存在（防"改 UI 时漏删/写错 id"导致运行期报错）
+  //     例外：脚本自己在运行期创建的节点（例如错误横幅 errOut），它们的 id 不出现在静态标记里，
+  //     从 ".id = 'xxx'" 与 "setAttribute('id', 'xxx')" 里收集后一并视为"存在"。
+  const runtimeIds = [
+    ...[...html.matchAll(/\.id\s*=\s*'([A-Za-z0-9_]+)'/g)].map((m) => m[1]),
+    ...[...html.matchAll(/setAttribute\('id',\s*'([A-Za-z0-9_]+)'/g)].map((m) => m[1])
+  ];
   const idRefs = [...new Set([
     ...[...html.matchAll(/\$\('([A-Za-z0-9_]+)'\)/g)].map((m) => m[1]),
     ...[...html.matchAll(/getElementById\('([A-Za-z0-9_]+)'\)/g)].map((m) => m[1])
   ])];
-  const ghostIds = idRefs.filter((id) => allIds.indexOf(id) === -1);
-  check(`脚本引用的 id 都存在（共引用 ${idRefs.length} 个）`, ghostIds.length === 0,
-    `引用=[${idRefs.join(', ')}]；不存在的=[${ghostIds.join(', ')}]`);
+  const ghostIds = idRefs.filter((id) => allIds.indexOf(id) === -1 && runtimeIds.indexOf(id) === -1);
+  check(`脚本引用的 id 都存在（共引用 ${idRefs.length} 个，其中运行期创建 ${runtimeIds.length} 个）`,
+    ghostIds.length === 0,
+    `引用=[${idRefs.join(', ')}]；运行期创建=[${runtimeIds.join(', ')}]；不存在的=[${ghostIds.join(', ')}]`);
 
   // 4c) 裸调用审计：内联脚本里不许出现"未定义/未加前缀"的函数调用
   {
@@ -1082,7 +1184,7 @@ for (const page of PAGES) {
   {
     const idx = readIf('index.html') || '';
     const text = visibleText(idx);
-    const hero = /<h1[^>]*>图片隐写工具<\/h1>/.test(idx) && /不上传任何服务器/.test(text);
+    const hero = /<h1[^>]*>RobustStego<\/h1>/.test(idx) && /不上传任何服务器/.test(text);
     const cards = (idx.match(/<ul class="features">[\s\S]*?<\/ul>/g) || []).length === 1 &&
       (idx.match(/<li>/g) || []).length >= 3;
     const steps = /<ol class="steps">/.test(idx) && /怎么用/.test(text);
@@ -1126,17 +1228,166 @@ for (const page of PAGES) {
       const s = readIf(rel);
       if (!s) { missingFav.push(rel + '(缺失)'); continue; }
       if (!/rel="icon"[^>]*href="data:image\/svg\+xml,/.test(s)) missingFav.push(rel);
-      // 外部链接：允许 GitHub 占位符（<your-name> 形式），其余一律应为相对路径
+      // 外部链接：只允许项目自身仓库与来源标注两类超链接，其余一律应为相对路径
       const urls = (s.match(/(?:href|src)="https?:\/\/[^"]+"/g) || [])
-        .filter((u) => !/github\.com\/&lt;your-name&gt;/.test(u) && !/w3\.org/.test(u));
+        .filter((u) => !/w3\.org/.test(u))
+        .filter((u) => {
+          const m = /href="([^"]+)"/.exec(u);
+          return !(m && isAllowedExternalUrl(m[1]));
+        });
       if (urls.length) extLinks.push(`${rel}:[${urls.join(', ')}]`);
     }
     check(`全部 ${pages.length} 个页面都设置了内联 SVG favicon`, missingFav.length === 0,
       missingFav.length === 0 ? `${pages.length} 个页面均含 rel="icon" + data:image/svg+xml`
         : `缺少 favicon=[${missingFav.join(', ')}]`);
-    check('页面间链接均为相对路径（无外部 http(s) 链接，GitHub 占位符除外）',
+    check('页面间链接均为相对路径（外部仅允许项目仓库与来源标注两类超链接）',
       extLinks.length === 0,
-      extLinks.length === 0 ? '未发现外部 http(s) 链接' : `外部链接=[${extLinks.join(' ')}]`);
+      extLinks.length === 0 ? '未发现计划外的外部 http(s) 链接' : `计划外外部链接=[${extLinks.join(' ')}]`);
+  }
+
+  // 7) 宣传动画 demo.html 的体积上限（验收要求 ≤ 300 KB）
+  {
+    const p = path.join(ROOT, 'demo.html');
+    const size = fs.existsSync(p) ? fs.statSync(p).size : -1;
+    check('demo.html 体积 ≤ 300 KB（单文件零依赖）', size > 0 && size <= 300 * 1024,
+      `${(size / 1024).toFixed(1)} KB（上限 300 KB）`);
+  }
+
+  // 8) 改名后的项目名一致性
+  // ------------------------------------------------------------
+  // 规则：旧项目名 "TPZF"/"TPZF 工具箱" 不得再出现。仓库改名（旧 URL 已废）之后，
+  //       唯一允许的例外只剩**来源标注域名** tpzfbox.top（致谢里必须点名的参考出处）。
+  //       所以逐行判定：含 tpzf 的行必须同时含 tpzfbox.top；否则视为残留的项目名/旧链接。
+  {
+    const htmlFiles = fs.readdirSync(ROOT).filter((n) => /\.html$/i.test(n));
+    const mdFiles = fs.readdirSync(ROOT).filter((n) => /\.md$/i.test(n));
+    const jsFiles = fs.readdirSync(path.join(ROOT, 'js')).map((n) => 'js/' + n);
+    const asProjectName = [];
+    const externalRefs = [];
+    const scan = (rel, text) => {
+      text.split('\n').forEach((line, i) => {
+        if (!/tpzf/i.test(line)) return;
+        if (line.indexOf(ATTRIBUTION_HOST) !== -1) externalRefs.push(`${rel}:${i + 1}`);
+        else asProjectName.push(`${rel}:${i + 1} → ${line.trim().slice(0, 70)}`);
+      });
+    };
+    htmlFiles.forEach((f) => scan(f, fs.readFileSync(path.join(ROOT, f), 'utf8')));
+    mdFiles.forEach((f) => scan(f, fs.readFileSync(path.join(ROOT, f), 'utf8')));
+    jsFiles.forEach((f) => scan('js/' + f, fs.readFileSync(path.join(ROOT, f), 'utf8')));
+    check(`旧项目名 "TPZF" 已全部替换（${htmlFiles.length} 个 HTML + ${mdFiles.length} 个 md + js/ ${jsFiles.length} 个源文件，作为项目名 0 命中）`,
+      asProjectName.length === 0,
+      asProjectName.length === 0
+        ? `作为项目名 0 处；唯一保留的是来源标注 ${ATTRIBUTION_HOST}，共 ${externalRefs.length} 处：[${externalRefs.join(', ')}]`
+        : `仍有 ${asProjectName.length} 处把旧名当项目名用：[${asProjectName.join('；')}]`);
+  }
+
+  // 8b) 仓库改名后的 URL 一致性（旧 slug 0 命中 + 域名与仓库地址均为新值）
+  {
+    const scanFiles = [];
+    const walk = (dir, rel) => {
+      for (const name of fs.readdirSync(dir)) {
+        const p = path.join(dir, name);
+        const relPath = rel ? rel + '/' + name : name;
+        if (fs.statSync(p).isDirectory()) {
+          if (name === 'node_modules' || name === '.git' || name === 'demo-shots') continue;
+          walk(p, relPath);
+        } else if (/\.(html|md|js)$/i.test(name)) {
+          scanFiles.push({ rel: relPath, text: fs.readFileSync(p, 'utf8') });
+        }
+      }
+    };
+    walk(ROOT, '');
+
+    const oldSlugHits = [];
+    const pagesUrlHits = [];
+    const wrongPagesUrl = [];
+    const repoLinkWrong = [];
+    for (const f of scanFiles) {
+      f.text.split('\n').forEach((line, i) => {
+        if (line.indexOf(OLD_SLUG) !== -1) oldSlugHits.push(`${f.rel}:${i + 1}`);
+        const rePages = /yhl4466\.github\.io\/([A-Za-z0-9._-]+)/g;
+        let m;
+        while ((m = rePages.exec(line)) !== null) {
+          pagesUrlHits.push(`${f.rel}:${i + 1}`);
+          if (m[1] !== 'robust-stego') wrongPagesUrl.push(`${f.rel}:${i + 1} → ${m[0]}`);
+        }
+        const reRepo = /github\.com\/yhl4466\/([A-Za-z0-9._-]+)/g;
+        while ((m = reRepo.exec(line)) !== null) {
+          if (m[1] !== 'robust-stego') repoLinkWrong.push(`${f.rel}:${i + 1} → ${m[0]}`);
+        }
+      });
+    }
+    check(`旧仓库名 "${OLD_SLUG}" 全项目 0 命中（扫描 ${scanFiles.length} 个 html/md/js）`,
+      oldSlugHits.length === 0,
+      oldSlugHits.length === 0 ? '0 命中' : `仍有 [${oldSlugHits.join(', ')}]`);
+    check(`所有 yhl4466.github.io 链接均指向 /robust-stego（共 ${pagesUrlHits.length} 处：${pagesUrlHits.join(', ')}）`,
+      wrongPagesUrl.length === 0 && pagesUrlHits.length >= 2,
+      wrongPagesUrl.length === 0
+        ? `全部为新站点地址（至少 README 与 demo.html 各一处）`
+        : `旧地址残留=[${wrongPagesUrl.join('；')}]`);
+    check('所有 github.com/yhl4466 仓库链接均指向 robust-stego',
+      repoLinkWrong.length === 0, repoLinkWrong.length === 0 ? '全部为新仓库地址' : `旧地址残留=[${repoLinkWrong.join('；')}]`);
+
+    // README 的在线访问地址（AC4）
+    const readme = readIf('README.md') || '';
+    const readmeOk = readme.indexOf(PAGES_URL) !== -1 && readme.indexOf(OLD_SLUG) === -1;
+    check('README.md 的"在线访问"地址已更新为新站点', readmeOk,
+      `含新地址=${readme.indexOf(PAGES_URL) !== -1}；含旧 slug=${readme.indexOf(OLD_SLUG) !== -1}`);
+
+    // index.html 页脚的 GitHub 链接（AC3）
+    const idxHtml = readIf('index.html') || '';
+    const repoLinkOk = idxHtml.indexOf('href="' + REPO_URL + '"') !== -1 &&
+      idxHtml.indexOf('&lt;your-name&gt;') === -1;
+    check('index.html 页脚 GitHub 链接指向新仓库（占位符已清除）', repoLinkOk,
+      `指向 ${REPO_URL}=${idxHtml.indexOf('href="' + REPO_URL + '"') !== -1}；` +
+      `残留占位符=${idxHtml.indexOf('&lt;your-name&gt;') !== -1}`);
+
+    // demo.html 结尾打字机网址（AC5）
+    const demo = readIf('demo.html') || '';
+    const demoOk = new RegExp("URL_TEXT\\s*=\\s*'yhl4466\\.github\\.io/robust-stego'").test(demo) &&
+      demo.indexOf(OLD_SLUG) === -1;
+    check('demo.html 结尾打字机网址已更新为新站点（URL_TEXT 常量）', demoOk,
+      `URL_TEXT 为新地址=${/URL_TEXT\s*=\s*'yhl4466\.github\.io\/robust-stego'/.test(demo)}；` +
+      `含旧 slug=${demo.indexOf(OLD_SLUG) !== -1}`);
+
+    // 致谢来源域名未被误改（AC6）
+    const techHtml = readIf('tech.html') || '';
+    const attributionIntact = readme.indexOf(ATTRIBUTION_HOST) !== -1 &&
+      techHtml.indexOf(ATTRIBUTION_HOST) !== -1;
+    check(`致谢里的来源域名 ${ATTRIBUTION_HOST} 未被改动（README 与 tech.html 均在）`, attributionIntact,
+      `README=${readme.indexOf(ATTRIBUTION_HOST) !== -1}；tech.html=${techHtml.indexOf(ATTRIBUTION_HOST) !== -1}`);
+  }
+
+  // 9) README 的"参考与致谢"章节
+  {
+    const readme = readIf('README.md') || '';
+    const hasSection = /##\s*参考与致谢/.test(readme);
+    const namesSource = /tpzfbox\.top/.test(readme);
+    const claimsIndependent = /独立实现/.test(readme) && /未使用/.test(readme);
+    const beforeLicense = readme.indexOf('## 参考与致谢') !== -1 &&
+      readme.indexOf('## 参考与致谢') < readme.indexOf('## 开源协议');
+    check('README.md 含"参考与致谢"章节：注明来源、声明独立实现，且位于"开源协议"之前',
+      hasSection && namesSource && claimsIndependent && beforeLicense,
+      `章节=${hasSection}；来源地址=${namesSource}；独立实现声明=${claimsIndependent}；` +
+      `位于协议章节之前=${beforeLicense}`);
+  }
+
+  // 10) tech.html 的 §1.5 参考来源
+  {
+    const tech = readIf('tech.html') || '';
+    const hasSection = /<h3[^>]*>1\.5 参考来源<\/h3>/.test(tech);
+    const namesSource = /tpzfbox\.top/.test(tech);
+    const claimsIndependent = /独立完成/.test(tech) && /未使用该项目的源代码/.test(tech);
+    // 位置用**标记锚点**定位，不能用 indexOf('2 相关工作')：摘要里提过一次，
+    // 直接找字符串会命中摘要、导致顺序判定失真。
+    const i14 = tech.search(/<h3[^>]*>1\.4 论文结构<\/h3>/);
+    const i15 = tech.search(/<h3[^>]*>1\.5 参考来源<\/h3>/);
+    const i2 = tech.search(/<h2[^>]*>2 相关工作<\/h2>/);
+    const inOrder = i14 !== -1 && i15 !== -1 && i2 !== -1 && i14 < i15 && i15 < i2;
+    check('tech.html 含 §1.5 参考来源（位于 §1.4 之后、§2 之前，注明来源并声明独立完成）',
+      hasSection && namesSource && claimsIndependent && inOrder,
+      `小节=${hasSection}；来源地址=${namesSource}；独立完成声明=${claimsIndependent}；` +
+      `标记位置（1.4@${i14} < 1.5@${i15} < 2@${i2}）=${inOrder}`);
   }
 }
 
