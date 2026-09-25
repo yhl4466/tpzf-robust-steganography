@@ -1,0 +1,346 @@
+﻿=== diag-blackout：局部遮盖 / 全局扰动 对提取的影响（1024×1024 载体）===
+载体 1024×1024：对齐 Tile=256，纹理 Tile=255（阈值 60）
+
+########## 6 对（lowFrequencyMode:false） ##########
+嵌入：K=45 N=90 mode=mode6 symbol=40B usedTiles=90 JPEG=1784B
+
+--- 基线（无遮盖） ---
+  内核结果：success=true recoveryPath=normal mode=mode6 validTiles=90/256 K_effective=45 耗时=150ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 90/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=90/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=90 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 37.5%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 258 次回调）
+
+--- 白块 50×50（占面积 0.2%，中心 487,487） ---
+  内核结果：success=true recoveryPath=normal mode=mode6 validTiles=89/256 K_effective=45 耗时=158ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 89/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=89/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=89 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 37.5%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 258 次回调）
+
+--- 白块 100×100（占面积 1.0%，中心 462,462） ---
+  内核结果：success=true recoveryPath=normal mode=mode6 validTiles=89/256 K_effective=45 耗时=151ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 89/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=89/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=89 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 37.5%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 258 次回调）
+
+--- 白块 200×200（占面积 3.8%，中心 412,412） ---
+  内核结果：success=true recoveryPath=normal mode=mode6 validTiles=85/256 K_effective=45 耗时=152ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 85/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=85/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=85 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 37.5%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 258 次回调）
+
+--- 白块 400×400（占面积 15.3%，中心 312,312） ---
+  内核结果：success=true recoveryPath=normal mode=mode6 validTiles=64/256 K_effective=45 耗时=153ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 64/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=64/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=64 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 37.5%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 258 次回调）
+
+########## 4 对（lowFrequencyMode:true） ##########
+嵌入：K=75 N=113 mode=mode4 symbol=24B usedTiles=113 JPEG=1784B
+
+--- 基线（无遮盖） ---
+  内核结果：success=true recoveryPath=normal mode=mode4 validTiles=113/256 K_effective=75 耗时=295ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 0/256，MODE_4 113/256；网格 16×16
+     内核现在的回显口径：mode=mode4 validTiles=113/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=0 / attempts.normal4=113）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 0.0%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 514 次回调）
+
+--- 白块 50×50（占面积 0.2%，中心 487,487） ---
+  内核结果：success=true recoveryPath=normal mode=mode4 validTiles=112/256 K_effective=75 耗时=309ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 0/256，MODE_4 112/256；网格 16×16
+     内核现在的回显口径：mode=mode4 validTiles=112/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=0 / attempts.normal4=112）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 0.0%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 514 次回调）
+
+--- 白块 100×100（占面积 1.0%，中心 462,462） ---
+  内核结果：success=true recoveryPath=normal mode=mode4 validTiles=112/256 K_effective=75 耗时=300ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 0/256，MODE_4 112/256；网格 16×16
+     内核现在的回显口径：mode=mode4 validTiles=112/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=0 / attempts.normal4=112）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 0.0%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 514 次回调）
+
+--- 白块 200×200（占面积 3.8%，中心 412,412） ---
+  内核结果：success=true recoveryPath=normal mode=mode4 validTiles=107/256 K_effective=75 耗时=292ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 0/256，MODE_4 107/256；网格 16×16
+     内核现在的回显口径：mode=mode4 validTiles=107/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=0 / attempts.normal4=107）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 0.0%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 514 次回调）
+
+--- 白块 400×400（占面积 15.3%，中心 312,312） ---
+  内核结果：success=true recoveryPath=normal mode=mode4 validTiles=86/256 K_effective=75 耗时=289ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 0/256，MODE_4 86/256；网格 16×16
+     内核现在的回显口径：mode=mode4 validTiles=86/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=0 / attempts.normal4=86）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 0.0%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 514 次回调）
+
+########## 颜色对比：同样 200×200（占面积 3.8%）##########
+
+--- white 块 200×200 ---
+  内核结果：success=true recoveryPath=normal mode=mode6 validTiles=85/256 K_effective=45 耗时=135ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 85/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=85/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=85 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 37.5%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 258 次回调）
+
+--- black 块 200×200 ---
+  内核结果：success=true recoveryPath=normal mode=mode6 validTiles=85/256 K_effective=45 耗时=143ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 85/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=85/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=85 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 37.5%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 258 次回调）
+
+--- gray 块 200×200 ---
+  内核结果：success=true recoveryPath=normal mode=mode6 validTiles=85/256 K_effective=45 耗时=128ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 85/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=85/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=85 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 37.5%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 258 次回调）
+
+--- noise 块 200×200 ---
+  内核结果：success=true recoveryPath=normal mode=mode6 validTiles=85/256 K_effective=45 耗时=141ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 85/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=85/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=85 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 37.5%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 258 次回调）
+
+########## 全局扰动对照（全部基于 400×400 白块图）##########
+
+--- G0 只有白块（不额外扰动） ---
+  内核结果：success=true recoveryPath=normal mode=mode6 validTiles=64/256 K_effective=45 耗时=121ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 64/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=64/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=64 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 37.5%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 258 次回调）
+
+--- G1 JPEG q=90 ---
+  内核结果：success=true recoveryPath=normal mode=mode6 validTiles=64/256 K_effective=45 耗时=139ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 64/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=64/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=64 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 37.5%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 258 次回调）
+
+--- G2 8bit 调色板量化（3-3-2） ---
+  内核结果：success=false recoveryPath=failed mode=mode6 validTiles=0/256 K_effective=0 耗时=580ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 0/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=0/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=0 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 0.0%
+  ③ 标尺路径调用记录：[{"call":"extractScale","inSize":"1024x1024","out":"1024x1024"}]
+     onProgress 阶段序列：extract → 标定中 → 重同步（共 576 次回调）
+
+--- G3 全局平移 1px（内容右移 1） ---
+  内核结果：success=false recoveryPath=failed mode=mode6 validTiles=0/256 K_effective=0 耗时=558ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 0/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=0/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=0 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(1,0) 通过率 37.5%  ← 不在 8px 网格上，内核搜不到！
+  ③ 标尺路径调用记录：[{"call":"extractScale","inSize":"1024x1024","out":"1024x1024"}]
+     onProgress 阶段序列：extract → 标定中 → 重同步（共 576 次回调）
+
+--- G3b 全局平移 2px ---
+  内核结果：success=false recoveryPath=failed mode=mode6 validTiles=0/256 K_effective=0 耗时=690ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 0/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=0/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=0 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(2,0) 通过率 37.5%  ← 不在 8px 网格上，内核搜不到！
+  ③ 标尺路径调用记录：[{"call":"extractScale","inSize":"1024x1024","out":"1024x1024"}]
+     onProgress 阶段序列：extract → 标定中 → 重同步（共 576 次回调）
+
+--- G4 线性亮度 +2% ---
+  内核结果：success=true recoveryPath=normal mode=mode6 validTiles=64/256 K_effective=45 耗时=124ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 64/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=64/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=64 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 37.5%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 258 次回调）
+
+--- G5 gamma 1.02 ---
+  内核结果：success=true recoveryPath=normal mode=mode6 validTiles=64/256 K_effective=45 耗时=126ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 64/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=64/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=64 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 37.5%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 258 次回调）
+
+########## 无标尺场景：图像里没有嵌入标尺时，标尺路径的行为 ##########
+  无标尺图上 extractScale 直接调用 → 243×243（真实尺寸 1024×1024）  ← 误报尺寸！
+  有标尺图上 extractScale 直接调用 → 1024×1024
+  纯噪声图 extractScale → null
+
+--- 无标尺 + 白块 400×400（看 recoveryPath 与是否重采样） ---
+  内核结果：success=true recoveryPath=normal mode=mode6 validTiles=64/256 K_effective=45 耗时=127ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 64/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=64/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=64 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 37.5%
+  ③ 标尺路径调用记录：未调用 extractScale
+     onProgress 阶段序列：extract → decode（共 258 次回调）
+
+########## 内核回显口径验证：把大量承载块涂黑，让 6 对读取失败 ##########
+  承载块共 90 个（整图 CRC 通过 90/256），涂黑其中 54 个
+
+--- 涂黑 60% 承载块（K 无法满足，必然失败） ---
+  内核结果：success=false recoveryPath=failed mode=mode6 validTiles=36/256 K_effective=45 耗时=548ms
+  ① 常规路径（复刻，全部对齐 Tile）：MODE_6 36/256，MODE_4 0/256；网格 16×16
+     内核现在的回显口径：mode=mode6 validTiles=36/256 （失败时取两模式中**有效块更多**的那个；attempts.normal6=36 / attempts.normal4=0）
+  ② 相位搜索（复刻内核 8px 网格、粗探 8 块）：最佳相位 (0,0) 通过率 0.0%（0/16），是否达到内核阈值 10% = false
+     旧实现（粗探 2 块、采样点为第 0 个与中间那个）：最佳相位 (0,0) 通过率 0.0%，达到阈值 = false
+     粗探有命中的相位：无
+     1px 粒度真实最优相位：(0,0) 通过率 12.5%
+  ③ 标尺路径调用记录：[{"call":"extractScale","inSize":"1024x1024","out":"1024x1024"}]
+     onProgress 阶段序列：extract → 标定中 → 重同步（共 576 次回调）
+
+########## H. 相位搜索可靠性（复刻内核 8px 网格、粗探 8 块、精探 16 块；另附旧实现 2 块对照）##########
+偏移类型     真实相位   8px 网格内最佳相位   通过率   粗探命中   内核会接受吗   1px 网格真实最优
+裁边  8px    (56,56)   (56,56)                18.8%   (56,56) 粗2/8 精3/16 是         (0,0) 0.0%
+裁边 16px    (48,48)   (48,48)                18.8%   (48,48) 粗2/8 精3/16 是         (0,0) 0.0%
+裁边 24px    (40,40)   (40,40)                18.8%   (40,40) 粗2/8 精3/16 是         (0,0) 0.0%
+裁边 32px    (32,32)   (32,32)                18.8%   (32,32) 粗2/8 精3/16 是         (32,32) 25.0%
+裁边 40px    (24,24)   (24,24)                18.8%   (24,24) 粗2/8 精3/16 是         (24,24) 25.0%
+裁边 48px    (16,16)   (16,16)                18.8%   (16,16) 粗2/8 精3/16 是         (16,16) 25.0%
+裁边 56px    (8,8)   (8,8)                  18.8%   (8,8) 粗2/8 精3/16   是         (8,8) 25.0%
+--- 全局平移（非 8 的倍数）---
+平移 1px       (1,0)      (0,0)                   0.0%   无命中                否         (1,0) 37.5%
+平移 2px       (2,0)      (0,0)                   0.0%   无命中                否         (2,0) 37.5%
+平移 3px       (3,0)      (0,0)                   0.0%   无命中                否         (3,0) 37.5%
+平移 4px       (4,0)      (0,0)                   0.0%   无命中                否         (4,0) 37.5%
+平移 5px       (5,0)      (0,0)                   0.0%   无命中                否         (5,0) 37.5%
+平移 6px       (6,0)      (0,0)                   0.0%   无命中                否         (6,0) 37.5%
+平移 7px       (7,0)      (0,0)                   0.0%   无命中                否         (7,0) 37.5%
+--- 粗探块数：旧实现 2 块 vs 现在 8 块（承载块越少越容易漏）---
+  偏移  8px（真相位 56）：粗探 旧 0/2 / 新 2/8，精探 3/16 = 18.8%
+  偏移 16px（真相位 48）：粗探 旧 0/2 / 新 2/8，精探 3/16 = 18.8%
+  偏移 24px（真相位 40）：粗探 旧 0/2 / 新 2/8，精探 3/16 = 18.8%
+  偏移 32px（真相位 32）：粗探 旧 0/2 / 新 2/8，精探 3/16 = 18.8%
+  偏移 40px（真相位 24）：粗探 旧 0/2 / 新 2/8，精探 3/16 = 18.8%
+  偏移 48px（真相位 16）：粗探 旧 0/2 / 新 2/8，精探 3/16 = 18.8%
+  偏移 56px（真相位 8）：粗探 旧 0/2 / 新 2/8，精探 3/16 = 18.8%
+  承载块占比 35.2%（90/256）；真相位粗探零命中：旧实现 7/7 次 → 现在 0/7 次；精探不足 10% 0/7 次
+--- H4 内核实际行为（裁切偏移，都是 8 的倍数）---
+  裁  8px：success=true path=phase valid=70/196 选中相位(56,56) 耗时=651ms；真相位(56,56)精探 3/16；标尺调用=无
+  裁 16px：success=true path=phase valid=70/196 选中相位(48,48) 耗时=615ms；真相位(48,48)精探 3/16；标尺调用=无
+  裁 24px：success=true path=phase valid=70/196 选中相位(40,40) 耗时=603ms；真相位(40,40)精探 3/16；标尺调用=无
+  裁 32px：success=true path=phase valid=70/196 选中相位(32,32) 耗时=601ms；真相位(32,32)精探 3/16；标尺调用=无
+  裁 40px：success=true path=phase valid=70/196 选中相位(24,24) 耗时=584ms；真相位(24,24)精探 3/16；标尺调用=无
+  裁 48px：success=true path=phase valid=70/196 选中相位(16,16) 耗时=578ms；真相位(16,16)精探 3/16；标尺调用=无
+  裁 56px：success=true path=phase valid=70/196 选中相位(8,8) 耗时=550ms；真相位(8,8)精探 3/16；标尺调用=无
+
+########## J. 缩放后的标尺读数与恢复结果（检验"按错误尺寸重采样"）##########
+缩放   图像尺寸        标尺读数      读数精确?   恢复尺寸      path/valid            耗时
+0.98   1004x1004     1024x1024    是                                       1024x1024    scale valid=90        1003ms
+0.90   922x922       1024x1024    是                                       1024x1024    scale valid=90        763ms
+0.75   768x768       1024x1024    是                                       1024x1024    scale valid=90        692ms
+0.50   512x512       1024x1024    是                                       -            failed valid=0        1018ms
+1.02   1044x1044     1024x1024    是                                       -            failed valid=0        613ms
+1.10   1126x1126     1024x1024    是                                       1024x1024    scale valid=90        1071ms
+
+########## I. 全局扰动扫描（MODE_6 常规读取的有效块数）##########
+  无扰动                MODE_6  90/256（35.2%）  1px 最优相位 (0,0) 37.5%  内核 success=true path=normal
+  JPEG q=95          MODE_6  90/256（35.2%）  1px 最优相位 (0,0) 37.5%  内核 success=true path=normal
+  JPEG q=92          MODE_6  90/256（35.2%）  1px 最优相位 (0,0) 37.5%  内核 success=true path=normal
+  JPEG q=90          MODE_6  90/256（35.2%）  1px 最优相位 (0,0) 37.5%  内核 success=true path=normal
+  JPEG q=85          MODE_6  90/256（35.2%）  1px 最优相位 (0,0) 37.5%  内核 success=true path=normal
+  8bit 调色板 3-3-2     MODE_6   0/256（0.0%）  1px 最优相位 (0,0) 0.0%  内核 success=false path=failed
+  平移 1px             MODE_6   0/256（0.0%）  1px 最优相位 (1,0) 37.5%  内核 success=false path=failed
+  平移 2px             MODE_6   0/256（0.0%）  1px 最优相位 (2,0) 37.5%  内核 success=false path=failed
+  平移 4px             MODE_6   0/256（0.0%）  1px 最优相位 (4,0) 37.5%  内核 success=false path=failed
+  平移 8px             MODE_6   0/256（0.0%）  1px 最优相位 (8,0) 37.5%  内核 success=true path=phase
+  线性亮度 +2%           MODE_6  90/256（35.2%）  1px 最优相位 (0,0) 37.5%  内核 success=true path=normal
+  gamma 1.02         MODE_6  90/256（35.2%）  1px 最优相位 (0,0) 37.5%  内核 success=true path=normal
+  线性亮度 +10%          MODE_6  90/256（35.2%）  1px 最优相位 (0,0) 37.5%  内核 success=true path=normal
+
+########## K. 相位搜索采样行为分析 ##########
+裁切   全量扫描 8px 网格前三位（通过数/总数）        真相位通过数   2Tile 粗探   8Tile 探针
+   8px   (56,56) 70/196  (8,0) 0/225  (16,0) 0/225      70/196        2/2         2/8
+  16px   (48,48) 70/196  (8,0) 0/225  (16,0) 0/225      70/196        2/2         2/8
+  32px   (32,32) 70/196  (8,0) 0/210  (16,0) 0/210      70/196        2/2         2/8
+  56px   (8,8) 70/196  (8,0) 0/196  (16,0) 0/196        70/196        2/2         2/8
+--- 粗探两个采样点在原图中的位置（不同裁切量采到的是同一批块）---
+  裁  8px（真相位 56）：采样点 原图(64,64)，原图(64,512)；该图对齐块 196 个
+  裁 16px（真相位 48）：采样点 原图(64,64)，原图(64,512)；该图对齐块 196 个
+  裁 32px（真相位 32）：采样点 原图(64,64)，原图(64,512)；该图对齐块 196 个
+  裁 56px（真相位 8）：采样点 原图(64,64)，原图(64,512)；该图对齐块 196 个
+
+=== 诊断结束 ===
