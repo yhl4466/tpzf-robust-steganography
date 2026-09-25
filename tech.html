@@ -65,6 +65,8 @@
   pre.diagram b { color: var(--accent); font-weight: 400; }
   pre.diagram i { color: var(--green); font-style: normal; }
   pre.diagram u { color: var(--warn); text-decoration: none; }
+  .figure { width: 100%; max-width: 800px; height: auto; display: block; margin: 8px 0 4px; }
+  p.caption { color: var(--muted); font-size: 13.5px; margin: 0 0 18px; }
   pre.formula {
     background: #0b0f15; border: 1px solid var(--line); border-radius: 10px;
     padding: 12px 18px; overflow-x: auto; margin: 14px 0;
@@ -181,18 +183,37 @@
     JPEG 的重编码在频域除以量化步长并取整，逆变换回整数像素时几乎每个像素都会被舍入，偏差恰在 1 个灰度级左右。用本仓库的 JPEG 量化模拟器实测，把 262144 个比特写入最低位后重编码再读回，质量 95 时正确率 49.89%，质量 90 时 49.95%，质量 75 时 50.08%。三个数字都等于随机猜测，说明即使接近无损的质量档也无法保住最低位。
   </p>
 
-  <pre class="diagram">  最低有效位（LSB）写入 → JPEG 重编码 → 读回正确率（262144 比特，照片载体）
-
-    原像素   178 = 1 0 1 1 0 0 1 <u>0</u>
-    写 1 →   179 = 1 0 1 1 0 0 1 <u>1</u>        改动幅度：1 个灰度级
-
-    q=95  ████████████████████ 49.89%
-    q=90  ████████████████████ 49.95%       50% = 随机猜测
-    q=75  ████████████████████ 50.08%
-
-  对照 · 本方法（DCT 差分调制，一个 64×64 区块承载 384 比特）
-    q=75  ███████████████████████████████████████░  99.48%
-          （固定裕量取 2 时在同一条件下只有 71.88%）</pre>
+<svg class="figure" viewBox="0 0 820 340" role="img" aria-labelledby="figa-title figa-desc" preserveAspectRatio="xMidYMid meet">
+  <title id="figa-title">插图 最低有效位（LSB）在 JPEG 重编码下失效</title>
+  <desc id="figa-desc">把 262144 个比特写入图像最低位后经 JPEG 重编码读回，质量 95、90、75 三档的正确率分别为 49.89%、49.95%、50.08%，均等于随机猜测；同一条件下本方法的 DCT 差分调制在质量 75 读到 99.48%，而固定裕量取 2 时只有 71.88%。</desc>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#7dd3fc">
+    <text x="8" y="26" font-size="12.5">最低有效位写入 → JPEG 重编码 → 读回正确率（262144 比特，照片载体）</text>
+    <text x="8" y="58" font-size="11.5" fill="#97a3b6">原像素　178 = 1 0 1 1 0 0 1 0</text>
+    <text x="8" y="78" font-size="11.5" fill="#97a3b6">写 1 →　179 = 1 0 1 1 0 0 1 1　　改动幅度仅 1 个灰度级</text>
+    <text x="8" y="98" font-size="11.5" fill="#fbbf24">但 JPEG 逆变换的取整误差同样是 ±1 个灰度级 → 最低位被整体覆盖</text>
+    <text x="8" y="130" font-size="12" fill="#97a3b6">LSB 写入后按不同质量读回</text>
+    <line x1="110" y1="150" x2="110" y2="240" stroke="#7dd3fc" stroke-opacity="0.4"/>
+    <line x1="260" y1="150" x2="260" y2="240" stroke="#7dd3fc" stroke-opacity="0.25" stroke-dasharray="4 3"/>
+    <text x="264" y="146" font-size="10.5" fill="#fbbf24">50% = 随机猜测</text>
+    <rect x="110" y="158" width="150" height="14" rx="3" fill="#7dd3fc" fill-opacity="0.3" stroke="#7dd3fc"/>
+    <text x="102" y="170" text-anchor="end" font-size="11" fill="#97a3b6">q=95</text>
+    <text x="268" y="170" font-size="11" fill="#7dd3fc">49.89%</text>
+    <rect x="110" y="184" width="150" height="14" rx="3" fill="#7dd3fc" fill-opacity="0.3" stroke="#7dd3fc"/>
+    <text x="102" y="196" text-anchor="end" font-size="11" fill="#97a3b6">q=90</text>
+    <text x="268" y="196" font-size="11" fill="#7dd3fc">49.95%</text>
+    <rect x="110" y="210" width="150" height="14" rx="3" fill="#7dd3fc" fill-opacity="0.3" stroke="#7dd3fc"/>
+    <text x="102" y="222" text-anchor="end" font-size="11" fill="#97a3b6">q=75</text>
+    <text x="268" y="222" font-size="11" fill="#7dd3fc">50.08%</text>
+    <rect x="110" y="236" width="298" height="14" rx="3" fill="#fbbf24" fill-opacity="0.45" stroke="#fbbf24"/>
+    <text x="102" y="248" text-anchor="end" font-size="11" fill="#97a3b6">本方法 q=75</text>
+    <text x="416" y="248" font-size="11" fill="#fbbf24">99.48%</text>
+    <line x1="0" y1="258" x2="820" y2="258" stroke="#7dd3fc" stroke-opacity="0.2"/>
+    <text x="8" y="282" font-size="12" fill="#97a3b6">对照 · 本方法（DCT 差分调制，一个 64×64 区块承载 384 比特）</text>
+    <text x="8" y="304" font-size="11.5" fill="#fbbf24">自适应裕量 q=75 正确率 99.48%；同一条件下固定裕量取 2 只有 71.88%</text>
+    <text x="8" y="326" font-size="11.5" fill="#97a3b6">结论：提高压缩质量救不回最低位，像素域不存在抗量化的承载位置。</text>
+  </g>
+</svg>
+<p class="caption">插图：LSB 在 JPEG 重编码下失效。条形图对比质量 95、90、75 三档读回正确率，三者都落在 49.89% 至 50.08% 的随机猜测区间。同一条件下本方法的 DCT 差分调制在质量 75 仍读到 99.48%，而固定裕量取 2 时只有 71.88%。</p>
 
   <p>
     该结果排除了“换用更高的压缩质量即可救回 LSB”的路线，也排除了像素域内的任何抗量化位置。可供选择的替代方向只剩两条：改用接收端无法干预的无损格式，或者把信息搬到量化之后仍然保留的描述维上。前者的格式由接收端平台决定，因此本方法选择后者。
@@ -351,26 +372,48 @@
     方法由七个部件组成，前四项解决“值被改变”的问题，后三项解决“位置被改变”与“参数未知”的问题。各部件之间通过统一的 64×64 区块网格与 48 字节载荷格式耦合，提取端按固定顺序尝试各条恢复路径。整体数据流与提取端的四条路径如图 1 所示。
   </p>
 
-  <pre class="diagram">  图 1　系统架构
-
-   秘密图 ──► JPEG 编码(质量 0.75) ──► 14 字节头 ──► 源数据 L 字节
-                                                        │
-                                         K = ceil(L/40)，N = ceil(K×冗余系数)
-                                                        ▼
-                              系统化 Reed–Solomon 编码 (GF(2^16)) ──► N 个 40 字节符号
-                                                        │
-                                        每符号 + seq + K ──► Packet.pack ──► 48 字节
-                                                        ▼
-   载体图 ──► 纹理分块(64×64) ──► 安全块筛选(最小裕量≥12) ──► 棋盘配额四象限交织
-                                                        │
-                    DCT 差分符号调制 + 几何标尺(导频 32/16 + 288 片扩频码)
-                                                        ▼
-                                                    隐写图 PNG
-  ─────────────────────────── 提取端 ───────────────────────────
-   ① 常规：按 (0,0) 相位直接提取，先试 6 对后试 4 对，CRC 判定命中
-   ② 相位：8px 粒度枚举 63 个原点相位，粗探 8 块 + 精探 16 块
-   ③ 尺度：导频量倍率 → 置信度 α/z 双判据 → 重采样回原尺寸 → 干扰对消 → 再提取
-   ④ 失败：如实返回 debugMask 与两条路径的读数</pre>
+<svg class="figure" viewBox="0 0 920 400" role="img" aria-labelledby="fig1-title fig1-desc" preserveAspectRatio="xMidYMid meet">
+  <title id="fig1-title">图 1 系统架构</title>
+  <desc id="fig1-desc">载体图与秘密图经嵌入端完成分块选块、DCT 差分调制、纠删编码与标尺叠加，输出隐写图 PNG；经过要求无损的文件级信道后，提取端依次尝试常规提取、相位搜索与尺度标定加干扰对消三条路径，最终还原秘密图。</desc>
+  <defs>
+    <marker id="fig1-arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0 0L10 5L0 10z" fill="#7dd3fc"/>
+    </marker>
+  </defs>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#7dd3fc">
+    <rect x="20" y="44" width="120" height="44" rx="8" fill="none" stroke="#7dd3fc"/>
+    <text x="80" y="71" text-anchor="middle">载体图</text>
+    <rect x="20" y="122" width="120" height="44" rx="8" fill="none" stroke="#7dd3fc"/>
+    <text x="80" y="149" text-anchor="middle">秘密图</text>
+    <rect x="200" y="44" width="160" height="122" rx="10" fill="none" stroke="#7dd3fc" stroke-opacity="0.65"/>
+    <text x="280" y="63" text-anchor="middle" fill="#97a3b6" font-size="12">嵌入端</text>
+    <text x="212" y="84" font-size="11">选块 64×64 / 安全块筛选</text>
+    <text x="212" y="102" font-size="11">DCT 差分符号调制 + 自适应裕量</text>
+    <text x="212" y="120" font-size="11">RS 纠删编码（GF(2^16)）</text>
+    <text x="212" y="138" font-size="11">标尺叠加：导频 32 / 16 + 扩频码</text>
+    <text x="280" y="178" text-anchor="middle" fill="#97a3b6" font-size="11.5">14 字节头 + 48 字节载荷 + K/N</text>
+    <rect x="430" y="44" width="120" height="44" rx="8" fill="none" stroke="#7dd3fc"/>
+    <text x="490" y="71" text-anchor="middle">隐写图 PNG</text>
+    <text x="640" y="62" text-anchor="middle" fill="#97a3b6" font-size="11.5">信道：原图 / 文件级无损传输</text>
+    <text x="640" y="78" text-anchor="middle" fill="#97a3b6" font-size="11.5">（普通发送会重编码 → 失效）</text>
+    <rect x="750" y="44" width="150" height="260" rx="10" fill="none" stroke="#7dd3fc" stroke-opacity="0.65"/>
+    <text x="825" y="63" text-anchor="middle" fill="#97a3b6" font-size="12">提取端</text>
+    <text x="762" y="86" font-size="11">① 常规 (0,0) 相位，先 6 对后 4 对，CRC 判定</text>
+    <text x="762" y="104" font-size="11">② 相位 8 px 步长枚举 63 个原点</text>
+    <text x="762" y="122" font-size="11">③ 尺度 导频量倍率 → α/z 双判据</text>
+    <text x="762" y="140" font-size="11">→ 重采样回原尺寸 → 干扰对消 → 再提取</text>
+    <text x="762" y="158" font-size="11">④ 失败 返回 debugMask 与两条路径读数</text>
+    <rect x="750" y="322" width="150" height="44" rx="8" fill="none" stroke="#fbbf24"/>
+    <text x="825" y="349" text-anchor="middle" fill="#fbbf24">还原的秘密图</text>
+    <path d="M140 66H200" fill="none" stroke="#7dd3fc" marker-end="url(#fig1-arrow)"/>
+    <path d="M140 144H170V160" fill="none" stroke="#7dd3fc"/>
+    <path d="M170 160H200" fill="none" stroke="#7dd3fc" marker-end="url(#fig1-arrow)"/>
+    <path d="M360 108H430" fill="none" stroke="#7dd3fc" marker-end="url(#fig1-arrow)"/>
+    <path d="M550 66H750" fill="none" stroke="#7dd3fc" marker-end="url(#fig1-arrow)"/>
+    <path d="M825 304V322" fill="none" stroke="#fbbf24" marker-end="url(#fig1-arrow)"/>
+  </g>
+</svg>
+<p class="caption">图 1：系统架构。左列为待嵌入的载体图与秘密图，中列为嵌入端的选块、调制、纠删编码与标尺叠加四个部件。右列为要求无损的文件级信道、提取端的三条恢复路径与最终还原的秘密图。</p>
 
   <h3>4.1 DCT 差分符号调制</h3>
 
@@ -389,25 +432,48 @@
     提取端只比较两者的相对大小，若 a 大于 b 判为 1，否则判为 0。由于量化对两个系数的影响独立且大致对称，差值会产生抖动而符号保持不变，除非差值本身小于抖动幅度。这一性质是抗压缩能力的直接来源，也解释了为什么不写入系数绝对值：绝对位置会被量化整体漂移。
   </p>
 
-  <pre class="diagram">  图 2　DCT 差分调制（含系数对位置示意）
-
-   8×8 系数块中的 6 对承载位置（索引 index = v×8 + u）
-        u=0   1     2     3     4     5   6   7
-   v=0  DC   ·     ·     ·     ·     ·   ·   ·
-   v=1   ·   (1,1) <u>(1,2)</u> <u>(1,3)</u> <u>(1,4)</u>  ·   ·   ·
-   v=2   ·   <u>(2,1)</u> (2,2) <u>(2,3)</u>  ·     ·   ·   ·   ·
-   v=3   ·   <u>(3,1)</u>  ·    (3,3)  ·     ·   ·   ·   ·
-   v=4   ·   <u>(4,1)</u>  ·     ·     ·     ·   ·   ·
-            └─ 6 对：(2,1)-(1,2) (3,1)-(1,3) (3,0)-(0,3)
-                     (2,0)-(0,2) (3,2)-(2,3) (4,1)-(1,4)
-
-   同一对的两个系数如何承载比特（以 (2,1) 与 (1,2) 为例，Q75 步长均为 7）
-     写 1： (2,1) ┃████████████┃ +12      写 0： (2,1) ┃████┃ +4
-            (1,2) ┃████┃ +4                     (1,2) ┃████████████┃ +12
-                     └ 差值符号即比特，和 mid 保持不动
-
-     量化后：原始差 12 → 约 1.7 个步长，取整噪声最多 ±1 步长 → 符号保住
-             原始差 2  → 约 0.29 个步长，噪声 ±1 步长 → 符号靠猜</pre>
+<svg class="figure" viewBox="0 0 900 340" role="img" aria-labelledby="fig2-title fig2-desc" preserveAspectRatio="xMidYMid meet">
+  <title id="fig2-title">图 2 DCT 差分调制</title>
+  <desc id="fig2-desc">一个 8×8 DCT 系数块的示意：实心高亮为 (2,1)-(1,2) 与 (0,3)-(3,0) 等配对系数位置，虚框为另一组配对位置；比特由一对系数的大小关系决定，a 大于 b 判为 1，b 大于 a 判为 0，而两系数的中值 mid 等于 a 加 b 的一半保持不变。</desc>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#7dd3fc">
+    <text x="20" y="30" font-size="12.5">8×8 DCT 系数块 · 配对系数位置（索引 index = 8v + u）</text>
+    <path d="M20 56V312M52 56V312M84 56V312M116 56V312M148 56V312M180 56V312M212 56V312M244 56V312M276 56V312M20 56H276M20 88H276M20 120H276M20 152H276M20 184H276M20 216H276M20 248H276M20 280H276M20 312H276" fill="none" stroke="#7dd3fc" stroke-opacity="0.35"/>
+    <rect x="117" y="57" width="30" height="30" fill="#7dd3fc" fill-opacity="0.35" stroke="#fbbf24" stroke-width="1.6"/>
+    <text x="132" y="76" text-anchor="middle" font-size="9.5" fill="#0f1319">0,3</text>
+    <rect x="85" y="89" width="30" height="30" fill="#7dd3fc" fill-opacity="0.35" stroke="#fbbf24" stroke-width="1.6"/>
+    <text x="100" y="108" text-anchor="middle" font-size="9.5" fill="#0f1319">1,2</text>
+    <rect x="53" y="121" width="30" height="30" fill="#7dd3fc" fill-opacity="0.35" stroke="#fbbf24" stroke-width="1.6"/>
+    <text x="68" y="140" text-anchor="middle" font-size="9.5" fill="#0f1319">2,1</text>
+    <rect x="21" y="153" width="30" height="30" fill="#7dd3fc" fill-opacity="0.35" stroke="#fbbf24" stroke-width="1.6"/>
+    <text x="36" y="172" text-anchor="middle" font-size="9.5" fill="#0f1319">3,0</text>
+    <rect x="149" y="89" width="30" height="30" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-dasharray="4 3"/>
+    <text x="164" y="108" text-anchor="middle" font-size="9.5" fill="#fbbf24">1,4</text>
+    <rect x="117" y="121" width="30" height="30" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-dasharray="4 3"/>
+    <text x="132" y="140" text-anchor="middle" font-size="9.5" fill="#fbbf24">2,3</text>
+    <rect x="85" y="153" width="30" height="30" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-dasharray="4 3"/>
+    <text x="100" y="172" text-anchor="middle" font-size="9.5" fill="#fbbf24">3,2</text>
+    <rect x="53" y="185" width="30" height="30" fill="none" stroke="#fbbf24" stroke-width="1.6" stroke-dasharray="4 3"/>
+    <text x="68" y="204" text-anchor="middle" font-size="9.5" fill="#fbbf24">4,1</text>
+    <text x="148" y="330" text-anchor="middle" font-size="10.5" fill="#97a3b6">u →（列）　v ↓（行）　DC 位于 (0,0)</text>
+    <text x="310" y="86" font-size="12.5" fill="#fbbf24">比特 = 一对系数的大小关系（a, b 为配对系数）</text>
+    <text x="310" y="108" font-size="12">a &gt; b → 1　　　b &gt; a → 0　　　mid = (a + b) / 2 不变</text>
+    <text x="310" y="146" font-size="11.5" fill="#97a3b6">写 1：(2,1) 系数抬到 +12，(1,2) 压到 +4</text>
+    <rect x="400" y="158" width="72" height="16" rx="3" fill="#7dd3fc" fill-opacity="0.45" stroke="#7dd3fc"/>
+    <text x="482" y="171" font-size="10.5">+12</text>
+    <rect x="510" y="158" width="24" height="16" rx="3" fill="#fbbf24" fill-opacity="0.45" stroke="#fbbf24"/>
+    <text x="544" y="171" font-size="10.5">+4</text>
+    <text x="310" y="200" font-size="11.5" fill="#97a3b6">写 0：(2,1) 压到 +4，(1,2) 抬到 +12（符号翻转）</text>
+    <rect x="400" y="212" width="24" height="16" rx="3" fill="#7dd3fc" fill-opacity="0.45" stroke="#7dd3fc"/>
+    <text x="434" y="225" font-size="10.5">+4</text>
+    <rect x="510" y="212" width="72" height="16" rx="3" fill="#fbbf24" fill-opacity="0.45" stroke="#fbbf24"/>
+    <text x="592" y="225" font-size="10.5">+12</text>
+    <text x="310" y="256" font-size="11" fill="#97a3b6">和 mid 恒定 → 区块直流能量不变，视觉扰动被限制在这一对系数之间</text>
+    <text x="310" y="276" font-size="11" fill="#97a3b6">Q75 步长 7：原始差 12 ≈ 1.7 步长，取整噪声 ±1 步长 → 符号保住</text>
+    <text x="310" y="296" font-size="11" fill="#97a3b6">原始差 2 ≈ 0.29 步长，噪声 ±1 步长 → 符号靠猜</text>
+    <text x="310" y="322" font-size="11" fill="#fbbf24">实心 = 高亮配对 (2,1)-(1,2) 与 (0,3)-(3,0)　虚线 = 其余配对</text>
+  </g>
+</svg>
+<p class="caption">图 2：DCT 差分调制。网格为一个 8×8 系数块，实心格与虚线格分别标出两组配对系数所在的位置。下方给出写入 1 与写入 0 时一对系数此消彼长的幅度，并注明两者之和 mid 保持不变。</p>
 
   <p>
     固定裕量的实验说明了“拉开差值”这一杠杆的有效性与上限。把裕量锁定为 2 时质量 75 下符号正确率 57.97%，裕量 4 时 62.23%，裕量 8 时 82.30%，裕量 16 与 32 均达到 100%。小裕量的正确率接近随机而大裕量代价过高，因此需要按块自适应的取值方式。
@@ -461,23 +527,48 @@
     代价是解码复杂度随 K 增长较快，需要对 K×K 矩阵做消元。实测 K 等于 2000 且 N 等于 4000 时，单次编码加解码平均 1252.7 毫秒，最慢 1401.3 毫秒；K 等于 4096 时单次约 2939 毫秒。控制办法是把源分片固定为 40 字节，使 K 保持在几十到几百的区间。
   </p>
 
-  <pre class="diagram">  图 3　N = 2K 冗余关系
-
-   源数据   ┌────┬────┬────┬─────┬────┐
-            │ 1  │ 2  │ 3  │  …  │ K  │
-            └────┴────┴────┴─────┴────┘
-                      │ 系统化 RS 编码（GF(2^16)，前 K 份零运算）
-                      ▼
-   编码符号 ┌────┬────┬────┬─────┬────┬─────┬─────┬────┐
-            │ 1  │ 2  │ 3  │  …  │ K  │K+1  │  …  │ N  │
-            └────┴────┴────┴─────┴────┴─────┴─────┴────┘
-                      │
-       N = 1.25K ：可容忍 20% 符号丢失   容量 ×1.6
-       N = 1.5K  ：可容忍 33% 符号丢失   容量 ×1.33
-       N = 2K    ：可容忍 50% 符号丢失   容量 ×1（默认）
-
-   提取端不需要知道档位：K 写在每个 48 字节载荷的前两字节，
-   对出现次数最多的 K 做多数表决即可，实测丢弃 50% 符号后 K_effective 仍正确。</pre>
+<svg class="figure" viewBox="0 0 760 320" role="img" aria-labelledby="fig3-title fig3-desc" preserveAspectRatio="xMidYMid meet">
+  <title id="fig3-title">图 3 N = 2K 冗余关系</title>
+  <desc id="fig3-desc">K 个源符号经 GF(2^16) 系统化 Reed-Solomon 编码成为 N 等于 2K 个符号，前 K 个即原始分片；任意收到不少于 K 个符号即可解码，因此理论边界为可容忍 50% 符号丢失，而面积遮挡下的实测稳定区间只有 25% 至 35%。</desc>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#7dd3fc">
+    <text x="60" y="48" font-size="12">源数据 K 份 · 每份 40 字节</text>
+    <rect x="126" y="60" width="164" height="30" fill="#7dd3fc" fill-opacity="0.35" stroke="#7dd3fc"/>
+    <text x="208" y="80" text-anchor="middle" font-size="11" fill="#0f1319">1 … K（K 份源分片）</text>
+    <path d="M278 90V112" fill="none" stroke="#7dd3fc" stroke-dasharray="4 3"/>
+    <text x="286" y="108" font-size="11" fill="#97a3b6">系统化 RS 编码（前 K 份零运算）</text>
+    <text x="60" y="142" font-size="12">编码符号 N = 2K 份 · 48 字节 / 符号</text>
+    <text x="12" y="174" font-size="11" fill="#97a3b6">符号</text>
+    <rect x="92" y="154" width="42" height="30" fill="#7dd3fc" fill-opacity="0.35" stroke="#7dd3fc"/>
+    <text x="113" y="174" text-anchor="middle" font-size="11" fill="#0f1319">1</text>
+    <rect x="134" y="154" width="42" height="30" fill="#7dd3fc" fill-opacity="0.35" stroke="#7dd3fc"/>
+    <text x="155" y="174" text-anchor="middle" font-size="11" fill="#0f1319">2</text>
+    <rect x="176" y="154" width="42" height="30" fill="#7dd3fc" fill-opacity="0.35" stroke="#7dd3fc"/>
+    <text x="197" y="174" text-anchor="middle" font-size="11" fill="#0f1319">3</text>
+    <rect x="218" y="154" width="42" height="30" fill="#7dd3fc" fill-opacity="0.35" stroke="#7dd3fc"/>
+    <text x="239" y="174" text-anchor="middle" font-size="11" fill="#0f1319">…</text>
+    <rect x="260" y="154" width="42" height="30" fill="#7dd3fc" fill-opacity="0.35" stroke="#7dd3fc"/>
+    <text x="281" y="174" text-anchor="middle" font-size="11" fill="#0f1319">K</text>
+    <rect x="302" y="154" width="42" height="30" fill="none" fill-opacity="1" stroke="#7dd3fc"/>
+    <text x="323" y="174" text-anchor="middle" font-size="11" fill="#7dd3fc">K+1</text>
+    <rect x="344" y="154" width="42" height="30" fill="none" fill-opacity="1" stroke="#7dd3fc"/>
+    <text x="365" y="174" text-anchor="middle" font-size="11" fill="#7dd3fc">…</text>
+    <rect x="386" y="154" width="42" height="30" fill="none" fill-opacity="1" stroke="#7dd3fc"/>
+    <text x="407" y="174" text-anchor="middle" font-size="11" fill="#7dd3fc">N</text>
+    <text x="470" y="168" font-size="12" fill="#fbbf24">系统化：前 K 份 = 原始分片</text>
+    <text x="470" y="188" font-size="12" fill="#fbbf24">任意收到 ≥ K 份即可解码</text>
+    <line x1="40" y1="218" x2="720" y2="218" stroke="#7dd3fc" stroke-opacity="0.25"/>
+    <text x="40" y="244" font-size="12">理论边界 50%　</text>
+    <rect x="126" y="232" width="264" height="14" rx="3" fill="none" stroke="#7dd3fc" stroke-opacity="0.6"/>
+    <rect x="126" y="232" width="132" height="14" rx="3" fill="#7dd3fc" fill-opacity="0.3" stroke="#7dd3fc"/>
+    <text x="400" y="244" font-size="11.5" fill="#97a3b6">任意丢一半符号仍可解（N = 2K 的理论极限）</text>
+    <text x="40" y="276" font-size="12">实测稳定 25~35%</text>
+    <rect x="126" y="264" width="264" height="14" rx="3" fill="none" stroke="#7dd3fc" stroke-opacity="0.6"/>
+    <rect x="192" y="264" width="53" height="14" rx="3" fill="#fbbf24" fill-opacity="0.8"/>
+    <text x="400" y="276" font-size="11.5" fill="#97a3b6">面积遮挡 25% 至 35% 稳定，超过即随空间分布波动</text>
+    <text x="40" y="308" font-size="11" fill="#97a3b6">K 写在每个 48 字节载荷的前两字节，提取端做多数表决即可，无需事先约定冗余档位。</text>
+  </g>
+</svg>
+<p class="caption">图 3：N = 2K 冗余关系。上排 K 个源符号经 GF(2^16) 系统化 Reed–Solomon 编码成为下排 N 个编码符号，前 K 个即原始分片。两段刻度条分别标出 50% 的理论边界与 25% 至 35% 的实测稳定区间。</p>
 
   <h3>4.4 空间分布策略（spread 棋盘配额）</h3>
 
@@ -489,20 +580,43 @@
     配额取左上与右下各 a 个、右上与左下各 b 个，并令 a 加 b 等于 K。这样左半、右半、上半、下半四个半平面各自恰好分到 K 个符号，任何一侧都没有偏斜。桶内再按扫描序做等距抽样，使符号在桶内均匀铺开而不是聚在一角。
   </p>
 
-  <pre class="diagram">  图 4　四象限棋盘配额
-
-   ┌───────────────────┬───────────────────┐
-   │     左上 a 个      │     右上 b 个      │   上半 = a + b = K
-   ├───────────────────┼───────────────────┤
-   │     左下 b 个      │     右下 a 个      │   下半 = b + a = K
-   └───────────────────┴───────────────────┘
-        左半 = a + b = K      右半 = b + a = K
-
-   对照 · 顺序铺开（scan）：2048×2048 图上 130 个符号只占最上面 5 行，
-        左上角一半面积被涂黑即丢失过半符号，解码失败。
-   实测 · 涂黑下半张图：顺序铺开 62 个符号存活 0 个；
-        棋盘配额下 31 个符号存活，恰好等于 K = 31，还原成功。
-   实测 · 涂黑左半：spread 读出 31 块 success=true；scan 读出 30 块 success=false。</pre>
+<svg class="figure" viewBox="0 0 960 320" role="img" aria-labelledby="fig4-title fig4-desc" preserveAspectRatio="xMidYMid meet">
+  <title id="fig4-title">图 4 四象限棋盘配额</title>
+  <desc id="fig4-desc">4×4 方格网格把承载块分成四个象限：左上与右下各 a 个，右上与左下各 b 个，且 a 加 b 等于 K，因此左、右、上、下四个半平面各自恰好 K 个符号，任一方向被遮挡一半面积时仍可解码。</desc>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#7dd3fc">
+    <rect x="40" y="40" width="60" height="60" fill="#fbbf24" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="100" y="40" width="60" height="60" fill="#fbbf24" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="160" y="40" width="60" height="60" fill="#7dd3fc" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="220" y="40" width="60" height="60" fill="#7dd3fc" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="40" y="100" width="60" height="60" fill="#fbbf24" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="100" y="100" width="60" height="60" fill="#fbbf24" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="160" y="100" width="60" height="60" fill="#7dd3fc" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="220" y="100" width="60" height="60" fill="#7dd3fc" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="40" y="160" width="60" height="60" fill="#7dd3fc" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="100" y="160" width="60" height="60" fill="#7dd3fc" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="160" y="160" width="60" height="60" fill="#fbbf24" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="220" y="160" width="60" height="60" fill="#fbbf24" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="40" y="220" width="60" height="60" fill="#7dd3fc" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="100" y="220" width="60" height="60" fill="#7dd3fc" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="160" y="220" width="60" height="60" fill="#fbbf24" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <rect x="220" y="220" width="60" height="60" fill="#fbbf24" fill-opacity="0.16" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <text x="160" y="34" text-anchor="middle" font-size="12" fill="#fbbf24">左上 a 个</text>
+    <text x="280" y="34" text-anchor="middle" font-size="12">右上 b 个</text>
+    <text x="160" y="296" text-anchor="middle" font-size="12">左下 b 个</text>
+    <text x="280" y="296" text-anchor="middle" font-size="12" fill="#fbbf24">右下 a 个</text>
+    <text x="160" y="318" text-anchor="middle" font-size="11.5" fill="#97a3b6">a + b = K</text>
+    <text x="360" y="60" font-size="12.5">左上 = 右下 = a　右上 = 左下 = b　a + b = K</text>
+    <text x="360" y="86" font-size="12.5" fill="#fbbf24">左 / 右 / 上 / 下四个半平面各恰好 K 个符号</text>
+    <text x="360" y="120" font-size="11.5" fill="#97a3b6">对照 · 顺序铺开（scan）：2048×2048 图上 130 个符号只占最上面 5 行，</text>
+    <text x="360" y="140" font-size="11.5" fill="#97a3b6">涂黑左上角一半面积即丢失过半符号，解码失败。</text>
+    <text x="360" y="174" font-size="11.5" fill="#97a3b6">实测 · 涂黑下半张图：顺序铺开 62 个符号存活 0 个；</text>
+    <text x="360" y="194" font-size="11.5" fill="#97a3b6">棋盘配额下 31 个符号存活，恰好等于 K = 31，还原成功。</text>
+    <text x="360" y="228" font-size="11.5" fill="#97a3b6">实测 · 涂黑左半：spread 读出 31 块 success = true；</text>
+    <text x="360" y="248" font-size="11.5" fill="#97a3b6">scan 读出 30 块 success = false。</text>
+    <text x="360" y="284" font-size="11.5" fill="#fbbf24">黄色填充象限 = a 桶，蓝色填充象限 = b 桶</text>
+  </g>
+</svg>
+<p class="caption">图 4：四象限棋盘配额。4×4 网格按象限分桶，左上与右下各 a 个、右上与左下各 b 个，并令 a 加 b 等于 K。该配额保证左、右、上、下四个半平面各自恰好 K 个符号，任一方向被遮挡一半面积时仍可解码。</p>
 
   <p>
     该策略对提取端完全透明，因为每个载荷自带序号，提取端只认序号而不关心位置。抽样顺序由确定性算法给出，因此同一输入两次嵌入的输出逐字节相同，这一点由测试脚本单独校验。当某个象限的可用块不足以满足配额时，代码按可用容量重算 a 与 b 并保持 a 加 b 等于 K。
@@ -521,22 +635,30 @@
     导频周期取 32 与 16 像素，每根振幅 1.2，两根导频与扩频载荷叠加后的 PSNR 实测为 44.46 dB。选择周期 32 与 16 而不是更长的周期，是因为自然图像在低频段的能量更高：周期 64 处的峰背比只有 1.19，与背景齐平；周期 32 为 5.49，周期 16 为 10.81。代价是可测缩放区间收窄为约 [0.4, 3.0]，仍完整覆盖 0.5× 至 1.25×。
   </p>
 
-  <pre class="diagram">  图 5　双导频波形（周期 32 + 16）
-
-   振幅
-   +1.2 ┤   ╭─╮         ╭─╮         ╭─╮         ╭─╮        sin(2π(x+y)/32)
-    0.0 ┼──╯   ╰───┬───╯   ╰───┬───╯   ╰───┬───╯   ╰──
-   −1.2 ┤         ╰─╯         ╰─╯         ╰─╯
-        0    8   16   24   32   40   48   56   64     像素（沿对角线 d = x+y）
-
-   振幅
-   +1.2 ┤  ╭╮   ╭╮   ╭╮   ╭╮   ╭╮   ╭╮   ╭╮   ╭╮        sin(2π(x+y)/16)
-    0.0 ┼─╯╰─┼─╯╰─┼─╯╰─┼─╯╰─┼─╯╰─┼─╯╰─┼─╯╰─┼─╯╰─┼─
-   −1.2 ┤    ╰╯   ╰╯   ╰╯   ╰╯   ╰╯   ╰╯   ╰╯   ╰╯
-        0    8   16   24   32   40   48   56   64     像素（周期为主导频的一半）
-
-   外加 288 片 ±1 扩频码（振幅 1.0），每片沿对角线占用 8 个像素位置，
-   顺序由伪随机置换打乱，避免周期 8 的谐波落回导频频点 16 与 32。</pre>
+<svg class="figure" viewBox="0 0 800 360" role="img" aria-labelledby="fig5-title fig5-desc" preserveAspectRatio="xMidYMid meet">
+<title id="fig5-title">图 5 双导频波形</title>
+<desc id="fig5-desc">两条沿对角线 d = x + y 的正弦导频，周期分别为 32 与 16 像素，振幅均为 1.2，构成 2:1 频率比。</desc>
+<g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#7dd3fc">
+<text x="8" y="18" font-size="12">周期 32 px · 振幅 1.2</text>
+<path d="M60 30H700M60 86H700M60 142H700" stroke="#7dd3fc" stroke-opacity="0.35" fill="none"/>
+<path d="M60 86H700" stroke="#7dd3fc" stroke-opacity="0.5" stroke-dasharray="5 4" fill="none"/>
+<text x="704" y="38" font-size="10.5" fill="#97a3b6">+1.2</text>
+<text x="704" y="90" font-size="10.5" fill="#97a3b6">0.0</text>
+<text x="704" y="146" font-size="10.5" fill="#97a3b6">−1.2</text>
+<polyline points="60,46.4 65.3,31.9 70.7,71.5 76,125.6 81.3,140.1 86.7,100.5 92,46.4 97.3,31.9 102.7,71.5 108,125.6 113.3,140.1 118.7,100.5 124,46.4 129.3,31.9 134.7,71.5 140,125.6 145.3,140.1 150.7,100.5 156,46.4 161.3,31.9 166.7,71.5 172,125.6 177.3,140.1 182.7,100.5 188,46.4 193.3,31.9 198.7,71.5 204,125.6 209.3,140.1 214.7,100.5 220,46.4 225.3,31.9 230.7,71.5 236,125.6 241.3,140.1 246.7,100.5 252,46.4 257.3,31.9 262.7,71.5 268,125.6 273.3,140.1 278.7,100.5 284,46.4 289.3,31.9 294.7,71.5 300,125.6 305.3,140.1 310.7,100.5 316,46.4 321.3,31.9 326.7,71.5 332,125.6 337.3,140.1 342.7,100.5 348,46.4 353.3,31.9 358.7,71.5 364,125.6 369.3,140.1 374.7,100.5 380,46.4 385.3,31.9 390.7,71.5 396,125.6 401.3,140.1 406.7,100.5 412,46.4 417.3,31.9 422.7,71.5 428,125.6 433.3,140.1 438.7,100.5 444,46.4 449.3,31.9 454.7,71.5 460,125.6 465.3,140.1 470.7,100.5 476,46.4 481.3,31.9 486.7,71.5 492,125.6 497.3,140.1 502.7,100.5 508,46.4 513.3,31.9 518.7,71.5 524,125.6 529.3,140.1 534.7,100.5 540,46.4 545.3,31.9 550.7,71.5 556,125.6 561.3,140.1 566.7,100.5 572,46.4 577.3,31.9 582.7,71.5 588,125.6 593.3,140.1 598.7,100.5 604,46.4 609.3,31.9 614.7,71.5 620,125.6 625.3,140.1 630.7,100.5 636,46.4 641.3,31.9 646.7,71.5 652,125.6 657.3,140.1 662.7,100.5 668,46.4 673.3,31.9 678.7,71.5 684,125.6 689.3,140.1 694.7,100.5 700,46.4" fill="none" stroke="#fbbf24" stroke-width="1.8"/>
+<text x="8" y="172" font-size="12">周期 16 px · 振幅 1.2 · 2:1 频率比</text>
+<path d="M60 186H700M60 230H700M60 274H700" stroke="#7dd3fc" stroke-opacity="0.35" fill="none"/>
+<path d="M60 230H700" stroke="#7dd3fc" stroke-opacity="0.5" stroke-dasharray="5 4" fill="none"/>
+<text x="704" y="194" font-size="10.5" fill="#97a3b6">+1.2</text>
+<text x="704" y="234" font-size="10.5" fill="#97a3b6">0.0</text>
+<text x="704" y="278" font-size="10.5" fill="#97a3b6">−1.2</text>
+<polyline points="60,230 64,174 68,230 72,286 76,230 80,174 84,230 88,286 92,230 96,174 100,230 104,286 108,230 112,174 116,230 120,286 124,230 128,174 132,230 136,286 140,230 144,174 148,230 152,286 156,230 160,174 164,230 168,286 172,230 176,174 180,230 184,286 188,230 192,174 196,230 200,286 204,230 208,174 212,230 216,286 220,230 224,174 228,230 232,286 236,230 240,174 244,230 248,286 252,230 256,174 260,230 264,286 268,230 272,174 276,230 280,286 284,230 288,174 292,230 296,286 300,230 304,174 308,230 312,286 316,230 320,174 324,230 328,286 332,230 336,174 340,230 344,286 348,230 352,174 356,230 360,286 364,230 368,174 372,230 376,286 380,230 384,174 388,230 392,286 396,230 400,174 404,230 408,286 412,230 416,174 420,230 424,286 428,230 432,174 436,230 440,286 444,230 448,174 452,230 456,286 460,230 464,174 468,230 472,286 476,230 480,174 484,230 488,286 492,230 496,174 500,230 504,286 508,230 512,174 516,230 520,286 524,230 528,174 532,230 536,286 540,230 544,174 548,230 552,286 556,230 560,174 564,230 568,286 572,230 576,174 580,230 584,286 588,230 592,174 596,230 600,286 604,230 608,174 612,230 616,286 620,230 624,174 628,230 632,286 636,230 640,174 644,230 648,286 652,230 656,174 660,230 664,286 668,230 672,174 676,230 680,286 684,230 688,174 692,230 696,286 700,230" fill="none" stroke="#fbbf24" stroke-width="1.8"/>
+<text x="8" y="342" font-size="11" fill="#97a3b6">横轴：d = x + y（像素）</text>
+<text x="700" y="342" text-anchor="end" font-size="11" fill="#fbbf24">另叠加 288 片 ±1 扩频码（振幅 1.0）</text>
+<path d="M60 26V316M140 26V316M220 26V316M300 26V316M380 26V316M460 26V316M540 26V316M620 26V316M700 26V316" stroke="#7dd3fc" stroke-opacity="0.15" fill="none"/><text x="60" y="322" text-anchor="middle" font-size="10.5" fill="#97a3b6">0</text><text x="220" y="322" text-anchor="middle" font-size="10.5" fill="#97a3b6">16</text><text x="380" y="322" text-anchor="middle" font-size="10.5" fill="#97a3b6">32</text><text x="540" y="322" text-anchor="middle" font-size="10.5" fill="#97a3b6">48</text><text x="700" y="322" text-anchor="middle" font-size="10.5" fill="#97a3b6">64</text>
+</g>
+</svg>
+<p class="caption">图 5：双导频波形（周期 32 + 16）。上一条曲线为周期 32 像素的导频，下一条为周期 16 像素的导频，两者振幅均为 1.2。图中横轴为对角线坐标之和，两条曲线的周期比 2:1 是倍率估计的基准。</p>
 
   <p>
     置信度用两个量复核，缺一不可。幅度 α 是亮度对该尺寸隐含的两根导频周期做最小二乘拟合的振幅，有标尺图实测 0.78 至 1.25，无标尺图接近 0。峰背比 z 是该周期的相关幅值相对邻域背景的倍数，真导频是窄峰，实测真值 2.25 至 10.2，而内容误报只有 1.19 至 1.34，门槛取 1.8 正好把两者分开。
@@ -564,23 +686,51 @@
     粗筛对每个相位取 8 个区块，只有粗筛有命中的相位才进入精探，精探用 16 个区块复核，接受阈值为命中率的 10%。粗筛区块数从前一版本的 2 个提升到 8 个是必要的：2 个区块时采样点是确定性的第 0 个与中间那个，不同裁切量会反复采到同一批原图区块，实测四边各裁 8 至 56 像素时采样点恒为原图的固定两处。这一改动使真相位在粗筛阶段的命中率回到可用水平，具体数字见第 5.4 节。
   </p>
 
-  <pre class="diagram">  裁切导致原点平移，相位搜索按 8 像素步长枚举 63 种原点
-
-   原网格                裁掉 32 像素后，原点随之平移
-   ┌──┬──┬──┬──┐         ┌──┬──┬──┬──┐
-   │  │  │  │  │  裁切   │  │  │  │  │   解码端按原网格切 → 每一刀都错开
-   ├──┼──┼──┼──┤ ──────► ├──┼──┼──┼──┤   枚举 63 种原点，用校验通过率挑对的
-   │  │  │  │  │         │  │  │  │  │
-   └──┴──┴──┴──┘         └──┴──┴──┴──┘
-
-   实测（1024×1024 载体，粗探 8 块 / 精探 16 块）：
-     四边各裁  8 像素：真相位 (56,56) 精探命中 3/16 → 恢复成功，整轮 651 ms
-     四边各裁 16 像素：真相位 (48,48) 精探命中 3/16 → 恢复成功，整轮 615 ms
-     四边各裁 32 像素：真相位 (32,32) 精探命中 3/16 → 恢复成功，整轮 601 ms
-     未隐写照片 512² ：63 个相位全部零命中 → 直接返回，整轮 437 ms
-     未隐写照片 1024²：同样零命中 → 整轮 671 ms（预算 2 s）
-   裁切 7 种偏移 × 3 张不同纹理载体 = 21/21 全部通过（recoveryPath = phase）。
-   1 至 7 像素的非 8 倍数平移不在搜索网格上，属于已知限制（见第 7.1 节）。</pre>
+<svg class="figure" viewBox="0 0 840 340" role="img" aria-labelledby="figb-title figb-desc" preserveAspectRatio="xMidYMid meet">
+  <title id="figb-title">插图 裁切后的网格相位重同步</title>
+  <desc id="figb-desc">裁切使区块网格原点平移，解码端按原网格切分会每一刀都错开；相位搜索按 8 像素步长枚举 63 种原点，用校验通过率挑选正确相位，实测四边各裁 8、16、32 像素时均命中 (56,56)、(48,48)、(32,32) 并恢复成功。</desc>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#7dd3fc">
+    <text x="8" y="26" font-size="12.5">裁切导致原点平移，相位搜索按 8 像素步长枚举 63 种原点</text>
+    <text x="20" y="54" font-size="11.5" fill="#97a3b6">原网格</text>
+    <text x="370" y="54" font-size="11.5" fill="#97a3b6">裁掉 32 像素后，真实原点随之平移</text>
+    <line x1="20" y1="66" x2="20" y2="210" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <line x1="20" y1="66" x2="164" y2="66" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <line x1="56" y1="66" x2="56" y2="210" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <line x1="20" y1="102" x2="164" y2="102" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <line x1="92" y1="66" x2="92" y2="210" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <line x1="20" y1="138" x2="164" y2="138" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <line x1="128" y1="66" x2="128" y2="210" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <line x1="20" y1="174" x2="164" y2="174" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <line x1="164" y1="66" x2="164" y2="210" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <line x1="20" y1="210" x2="164" y2="210" stroke="#7dd3fc" stroke-opacity="0.55"/>
+    <line x1="370" y1="66" x2="370" y2="210" stroke="#fbbf24" stroke-opacity="0.35" stroke-dasharray="5 4"/>
+    <line x1="370" y1="66" x2="514" y2="66" stroke="#fbbf24" stroke-opacity="0.35" stroke-dasharray="5 4"/>
+    <line x1="406" y1="66" x2="406" y2="210" stroke="#fbbf24" stroke-opacity="0.35" stroke-dasharray="5 4"/>
+    <line x1="370" y1="102" x2="514" y2="102" stroke="#fbbf24" stroke-opacity="0.35" stroke-dasharray="5 4"/>
+    <line x1="442" y1="66" x2="442" y2="210" stroke="#fbbf24" stroke-opacity="0.35" stroke-dasharray="5 4"/>
+    <line x1="370" y1="138" x2="514" y2="138" stroke="#fbbf24" stroke-opacity="0.35" stroke-dasharray="5 4"/>
+    <line x1="478" y1="66" x2="478" y2="210" stroke="#fbbf24" stroke-opacity="0.35" stroke-dasharray="5 4"/>
+    <line x1="370" y1="174" x2="514" y2="174" stroke="#fbbf24" stroke-opacity="0.35" stroke-dasharray="5 4"/>
+    <line x1="514" y1="66" x2="514" y2="210" stroke="#fbbf24" stroke-opacity="0.35" stroke-dasharray="5 4"/>
+    <line x1="370" y1="210" x2="514" y2="210" stroke="#fbbf24" stroke-opacity="0.35" stroke-dasharray="5 4"/>
+    <rect x="20" y="66" width="144" height="144" fill="#7dd3fc" fill-opacity="0.07" stroke="#7dd3fc"/>
+    <path d="M190 138H340" fill="none" stroke="#fbbf24" stroke-width="1.6"/>
+    <path d="M330 132L342 138L330 144" fill="none" stroke="#fbbf24" stroke-width="1.6"/>
+    <text x="265" y="130" text-anchor="middle" font-size="11.5" fill="#fbbf24">裁切 32 px</text>
+    <text x="560" y="100" font-size="11.5" fill="#97a3b6">解码端仍按原网格切分 → 每一刀都错开</text>
+    <text x="560" y="122" font-size="11.5" fill="#97a3b6">枚举 63 种原点，用 CRC 校验通过率挑对的</text>
+    <text x="560" y="144" font-size="11.5" fill="#fbbf24">粗探 8 块 → 精探 16 块（阈值 10%）</text>
+    <text x="560" y="166" font-size="11.5" fill="#97a3b6">实现代价 63 倍工作量，两级筛选后可控</text>
+    <line x1="0" y1="228" x2="840" y2="228" stroke="#7dd3fc" stroke-opacity="0.2"/>
+    <text x="8" y="250" font-size="11.5" fill="#97a3b6">实测（1024×1024 载体，粗探 8 块 / 精探 16 块）：</text>
+    <text x="8" y="270" font-size="11.5" fill="#97a3b6">四边各裁　8 像素：真相位 (56,56) 精探命中 3/16 → 恢复成功，整轮 651 ms</text>
+    <text x="8" y="288" font-size="11.5" fill="#97a3b6">四边各裁 16 像素：真相位 (48,48) 精探命中 3/16 → 恢复成功，整轮 615 ms</text>
+    <text x="8" y="306" font-size="11.5" fill="#97a3b6">四边各裁 32 像素：真相位 (32,32) 精探命中 3/16 → 恢复成功，整轮 601 ms</text>
+    <text x="8" y="324" font-size="11.5" fill="#97a3b6">未隐写照片 512² 与 1024²：63 个相位全部零命中 → 直接返回，整轮 437 / 671 ms</text>
+    <text x="8" y="340" font-size="11.5" fill="#fbbf24">裁切 7 种偏移 × 3 张纹理载体 = 21/21 通过；1 至 7 像素非 8 倍数平移不在网格上（见 7.1 节）</text>
+  </g>
+</svg>
+<p class="caption">插图：网格相位重同步。裁切使区块网格的原点发生平移，解码端按原网格切分会导致每一刀都错开。相位搜索按 8 像素步长枚举 63 种原点，再用 CRC 校验通过率挑选正确的相位。下方列出四边各裁 8、16、32 像素以及未隐写照片的实测耗时。</p>
 
   <p>
     精度与速度的对立通过降维缓解。两根导频都沿对角线方向，相位只取决于坐标之和，因此可先把像素按对角线累加成一个剖面，之后任意周期上的相关只需 O(W+H) 次运算。该做法与全采样严格等价，不存在按步长抽样带来的频率混叠，在 2649×1582 的图上，一次完整标尺检测从 3.8 秒降到 112 毫秒。
@@ -605,6 +755,7 @@
     <tr><td>二次有损重存过的载体图</td><td>零遮蔽存活率可能降至 73.2%（309/422）</td><td>载体图本身已带一次 JPEG 量化痕迹，承载块的部分比特在嵌入前就已处于临界状态</td></tr>
     <tr><td>有损信道传输</td><td>微信普通发送后 520 个承载块读出 0 个</td><td>平台把长边压到 1080 像素并重新编码，承载信号整体被移除</td></tr>
     <tr><td>秘密图为彩色大图</td><td>转为 8 位灰度，长边最多 512 像素，装不下则自动逐级缩小</td><td>容量以区块计，彩色 JPEG 体积约为灰度三倍</td></tr>
+    <tr><td>超大载体（如 4000×3000 手机照片）</td><td>可成功，但嵌入需数秒到数十秒（本机实测 6.7 至 24.6 秒，随承载区块数上升）</td><td>承载区块数由载体的纹理面积决定，12 兆像素载体可达约 2500 个区块，每块都要做一次 64×64 的 DCT 正反变换，提取时还要再读一遍</td></tr>
   </table>
 
   <p>
@@ -622,7 +773,7 @@
   </p>
 
   <p>
-    合成方法采用分数布朗运动（fractional Brownian motion, fBm）叠加，取 5 个八度，lacunarity 取 2.0、gain 取 0.5，最低频晶格的间距取 64 像素，从而保证任意 64×64 区块内都含跨尺度的变化。每个八度由一个确定性伪随机数发生器生成晶格，插值采用一阶与二阶导数在端点均为零的 smoothstep 曲线，避免晶格线在成图上留下可见的方格。合成场随后经一条亮度单调的色板查表映射为彩色图像，五种风格的色板端点亮度均限制在 40 至 215 之间，原因见第 4.2 节：贴近 0 或 255 的像素在叠加调制幅度时会被截断，实测标称裕量 12.5 的区块实际只剩 8.0。五种风格的色板端点与视觉特征列于表 9。
+    合成方法采用分数布朗运动（fractional Brownian motion, fBm）叠加，取 4 个八度，lacunarity 取 2.0、gain 取 0.5，最低频晶格的间距取 64 像素，从而保证任意 64×64 区块内都含跨尺度的变化。八度取 4 而非 5 是收益与代价的权衡：第 5 层的振幅只有 1/16，对亮度方差的贡献约 0.4%，肉眼也几乎分辨不出，却要占掉约两成计算量。每个八度由一个确定性伪随机数发生器生成晶格，插值采用一阶与二阶导数在端点均为零的 smoothstep 曲线，避免晶格线在成图上留下可见的方格。合成场随后经一条亮度单调的色板查表映射为彩色图像，五种风格的色板端点亮度均限制在 40 至 215 之间，原因见第 4.2 节：贴近 0 或 255 的像素在叠加调制幅度时会被截断，实测标称裕量 12.5 的区块实际只剩 8.0。五种风格的色板端点与视觉特征列于表 9。
   </p>
 
   <table>
@@ -644,8 +795,43 @@
   </div>
 
   <p>
-    合成结果的实测指标如下：五种风格在 1024×1024 下全部满足逐块裕量 ≥ 12 的占比 100%、纹理区块占比 100%，最小裕量 15.0；1024×1024 生成耗时 199 毫秒，2048×2048 耗时 1475 毫秒，均低于设计预算。用于端到端测试时，把 32×32 的秘密图嵌入合成载体，零遮蔽提取的存活率为 100%（70/70），中心遮蔽 25% 后仍可完整还原，遮蔽 40% 后同样成功。合成图不含规则图案，8×8 块边界与块内部的相邻像素差分比为 1.013，lag 为 8、16、32、64 的自相关值分别为 0.895、0.717、0.281、0.184，与邻域 lag 的均值 0.834 相比没有突出尖峰，说明低频谱是平滑下降的而非周期性的。
+    实现上采用按 8 行分带的流式生成，而不是先算出整幅的浮点场再逐块处理。原因是内存：8192×8192 时一整张 Float32 场就是 268 MB，加上 RGBA 输出超过 500 MB，移动端必然失败。分带方案只需要保留每个八度的随机晶格（最低频那层约 130×130 个浮点数）与两个 8×W 的小缓冲，峰值内存约等于 RGBA 输出本身（4096² 约 64 MB，8192² 约 268 MB），并且天然支持分片让出主线程：每占用约 12 毫秒就让出一次，界面不会假死。对外提供两个入口：同步的 <code>generate</code> 适合 2048² 以内，分片异步的 <code>generateAsync</code> 返回 Promise 并通过 <code>onProgress(阶段, 已完成, 总数)</code> 汇报进度，适合 4096² 及以上。尺寸上限放宽到 8192，超过 4096 时在结果里给出内存提示。
   </p>
+
+  <p>
+    合成结果的实测指标如下：五种风格在 1024×1024 下全部满足逐块裕量 ≥ 12 的占比 100%、纹理区块占比 100%，最小裕量 15.0；单机实测生成耗时 1024² 为 174 至 383 毫秒、2048² 为 748 至 1172 毫秒、4096² 为 2732 至 4666 毫秒（区间两端分别对应空载与带载运行），8192² 约 26 秒。用于端到端测试时，把 32×32 的秘密图嵌入合成载体，零遮蔽提取的存活率为 100%（102/102），中心遮蔽 25% 后为 73/102 仍可完整还原，遮蔽 40% 后为 60/102 同样成功。合成图不含规则图案，8×8 块边界与块内部的相邻像素差分比为 1.012，lag 为 8、16、32、64 的自相关值分别为 0.976、0.920、0.753、0.306，与邻域 lag 的均值 0.957 相比没有突出尖峰，说明低频谱是平滑下降的而非周期性的。
+  </p>
+
+  <h3>4.9 秘密图的自适应编码</h3>
+
+  <p>
+    容量是否够用同时取决于秘密图的像素尺寸与它的 JPEG 质量，而旧实现只调整尺寸、质量固定为 0.75，于是在容量吃紧的载体上只能一路把秘密图缩到长边 64 像素，最后报"放不下"。本节的编码策略改为两者的联合搜索：先在当前尺寸上按 0.75 编码，若所需区块数不足可用区块的 80%，说明容量富余，就依次试 0.85 与 0.92 并取仍然放得下的最高质量；若 0.75 已经放不下，则依次试 0.65、0.55、0.45，取第一个放得下的档位；连 0.45 都放不下时才缩小尺寸并重复上述过程。质量下限取 0.45 是因为再低会让秘密图肉眼明显发糊，此时缩小尺寸的观感损失更小。该阶梯是显式开启的（<code>adaptiveQuality: true</code>），未开启时完全沿用"质量固定、只动尺寸"的旧行为，以免悄悄改变既有调用方的产物。
+  </p>
+
+  <p>
+    与质量阶梯配套的是灰度模式：开启后先把像素真的改成 R = G = B = 亮度，再交给编码器。这一点必须落到像素上，只把载荷头里的格式字节标成灰度并不会让文件变小。这里需要修正一个想当然的估计：色度通道并不占 JPEG 的一半比特，因为标准量化表对色度的量化步长本来就比亮度粗，主流编码器还默认对色度做降采样。在真实浏览器（Chromium 内核的 canvas 编码器）上按三种内容类型实测，灰度化后的体积只降到彩色的 66% 至 93%，即容量多出 10% 至 50%，具体数值见表 10；平滑且饱和的彩色图收益最大（约 1.45 倍），带细颗粒的照片类收益最小（约 1.1 至 1.25 倍）。因此灰度模式的价值是"在容量边缘多挤出一点余量、并允许同样体积下用更高的质量"，而不是把容量翻几倍。
+  </p>
+
+  <table>
+    <caption>表 10　灰度化的体积收益（真实浏览器实测，1024×1024，体积比为灰度 ÷ 彩色）</caption>
+    <tr><th>内容类型</th><th>质量 0.45</th><th>质量 0.75</th><th>质量 0.92</th><th>容量倍数区间</th></tr>
+    <tr><td>大面积平滑饱和色（晚霞、纯色墙面）</td><td>70.5%</td><td>68.5%</td><td>70.0%</td><td>1.42 ~ 1.46×</td></tr>
+    <tr><td>高细节彩色（花丛、人群）</td><td>73.8%</td><td>69.9%</td><td>66.0%</td><td>1.35 ~ 1.52×</td></tr>
+    <tr><td>带细颗粒的照片类</td><td>80.9%</td><td>87.6%</td><td>92.8%</td><td>1.08 ~ 1.24×</td></tr>
+  </table>
+
+  <p>
+    页面把这两件事包装成三个快捷档位（高清优先 / 均衡 / 容量优先），并在窄屏（宽度小于 768 像素）上默认把抗损坏档位设为容量最大的紧凑档，因为手机相册照片的天空与水面占比通常偏高，安全块数量少。三档的差别不在算法而在允许的损失：高清优先只允许把质量降到 0.75、最多缩到原尺寸的 40%；均衡允许降到 0.45 并一路缩小；容量优先先转灰度再从较低质量起步。这样划分的原因是三种诉求互斥：像素尺寸、编码质量与成功率不可能同时最大，把取舍交给用户比让程序替他猜更诚实。
+  </p>
+
+  <p>
+    以手机照片为载体的端到端实测（合成载体模拟真机，长边 4000，四组场景全部成功）：4000×3000 载体对 1080×2400 的手机截图，容量分析给出 2613 个纹理区块、0 个安全块，编码器回落到全部纹理区块，秘密图被自动缩到 432×960（倍率 0.40）并以质量 0.55 编码为 49.8 KB，嵌入后零遮蔽存活 2552/2552，提取载荷逐字节一致，嵌入耗时 9.1 秒；同一载体配 4000×3000 的秘密图时缩到 800×600（0.20）、49.0 KB，存活 2512/2512，耗时 24.6 秒；把秘密图换成合成的 1024×1024 图时缩到 717×717（0.70）、46.4 KB，耗时 6.7 秒；作为对照，把载体换成合成的 2048×2048 图（1024 个安全块）后，同样那张 4000×3000 的秘密图被缩到 480×360（0.12）并以质量 0.45 编码为 19.0 KB，存活 976/976，耗时 15.0 秒。四组都从"红色报错"变成了"自动适配并成功"，代价是耗时随承载区块数上升，因此第 7 节把大载体的耗时列为已知限制。窄屏默认紧凑档与"容量优先"档位正是为这种情况准备的降级路径。
+  </p>
+
+  <p>
+    这里有一处实现细节值得单独记录，因为它是本轮最大的一次性能修正。质量阶梯是"尺寸 × 质量"的网格搜索，早期实现每换一个候选质量就重新编码一次整幅秘密图；对 4000×3000 的秘密图而言一次编码就是十二兆像素，同一张图会被反复编码七八遍，实测嵌入耗时因此达到 121 秒。修正分两步：一是把 (缩放倍率, 质量) 的编码结果在同一次调用内缓存，安全块与纹理块两轮规划共用同一份结果；二是提前剪枝，当按 0.75 编码所需的区块数已经超过上限的 2.5 倍时，直接跳到下一个尺寸，因为把质量降到下限最多也只能省掉约六成体积。两步之后 4000×3000 秘密图的场景从 121 秒降到 24.6 秒、手机截图的场景从 38.5 秒降到 9.1 秒，而选中的尺寸与质量完全不变 —— 缓存只省掉重复计算，不改变搜索结果。
+  </p>
+
 
   <!-- ============================================================ -->
   <h2 id="s5">5 实验</h2>
@@ -664,26 +850,52 @@
     模块级验收测试共 111 项，全部通过：DCT 内核 17 项、几何标定 20 项、端到端整合 38 项、纠删码 15 项、数据包 9 项、图像工具 12 项。浏览器端 36 项用例在干跑中 35 项通过，唯一失败项为 T30，其现象与根因记录于第 7.1 节。模块级与浏览器级两组数据互为交叉验证，任何一组出现偏差都会在提交前暴露。
   </p>
 
-  <pre class="diagram">  图 6　浏览器 36 项测试结果（数据取自 js/test-suite.js 的分组结构与干跑结果）
-
-   每组用例数 10
-        │
-     7  ┤ <b>██</b> <b>██</b>        <b>██</b> <b>██</b> <b>██</b>
-     6  ┤ <b>██</b> <b>██</b>        <b>██</b> <b>██</b> <b>██</b>
-     5  ┤ <b>██</b> <b>██</b>        <b>██</b> <b>██</b> <b>██</b>
-     4  ┤ <b>██</b> <b>██</b> <b>██</b>     <b>██</b> <b>██</b> <b>██</b>
-     3  ┤ <b>██</b> <b>██</b> <b>██</b>     <b>██</b> <b>██</b> <b>██</b> <b>██</b>
-     2  ┤ <b>██</b> <b>██</b> <b>██</b>     <b>██</b> <b>██</b> <b>██</b> <b>██</b>
-     1  ┤ <b>██</b> <b>██</b> <b>██</b> <b>██</b>  <b>██</b> <b>██</b> <b>██</b> <b>██</b>
-     0  ┼──┴──┴──┴──┴───┴──┴──┴──┴──
-        baseline blackout crop watermark capacity resync
-         7/7      5/5     4/4    4/4      5/5     10/11
-        │        │       │      │        │       └─ 失败 1 项：T30
-
-   合计 36 项：通过 35，失败 1（总耗时 15702 ms）。
-   分组构成：baseline 7（T1~T7）· blackout 5（T8~T12）· crop 4（T13~T16）
-             watermark 4（T17~T20）· capacity 5（T21~T25）· resync 11（T26~T36）
-   失败项 T30：仅嵌标尺 + 缩放 0.75× → 读回 513×513（期望 512×512），耗时 135.4 ms。</pre>
+<svg class="figure" viewBox="0 0 800 400" role="img" aria-labelledby="fig6-title fig6-desc" preserveAspectRatio="xMidYMid meet">
+  <title id="fig6-title">图 6 36 项测试结果</title>
+  <desc id="fig6-desc">浏览器端 36 项端到端用例的分组结果：baseline 7/7、blackout 5/5、crop 4/4、watermark 4/4、capacity 5/5、resync 10/11，合计 35 通过 / 1 失败，失败项为 T30（仅嵌标尺 + 缩放 0.75× 时读回 513×513）。</desc>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#7dd3fc">
+    <text x="8" y="20" font-size="12.5">浏览器端 36 项端到端用例 · 分组通过数 / 用例数</text>
+    <text x="8" y="40" font-size="11" fill="#97a3b6">纵轴 = 通过项数；数据取自 js/test-suite.js 的分组结构与干跑结果</text>
+    <line x1="64" y1="258" x2="736" y2="258" stroke="#7dd3fc" stroke-opacity="0.2"/>
+    <text x="58" y="262" text-anchor="end" font-size="10.5" fill="#97a3b6">0</text>
+    <line x1="64" y1="222" x2="736" y2="222" stroke="#7dd3fc" stroke-opacity="0.2"/>
+    <text x="58" y="226" text-anchor="end" font-size="10.5" fill="#97a3b6">2</text>
+    <line x1="64" y1="186" x2="736" y2="186" stroke="#7dd3fc" stroke-opacity="0.2"/>
+    <text x="58" y="190" text-anchor="end" font-size="10.5" fill="#97a3b6">4</text>
+    <line x1="64" y1="150" x2="736" y2="150" stroke="#7dd3fc" stroke-opacity="0.2"/>
+    <text x="58" y="154" text-anchor="end" font-size="10.5" fill="#97a3b6">6</text>
+    <line x1="64" y1="114" x2="736" y2="114" stroke="#7dd3fc" stroke-opacity="0.2"/>
+    <text x="58" y="118" text-anchor="end" font-size="10.5" fill="#97a3b6">8</text>
+    <line x1="64" y1="258" x2="736" y2="258" stroke="#7dd3fc" stroke-opacity="0.6"/>
+    <rect x="70" y="132" width="62" height="126" rx="3" fill="#7dd3fc" fill-opacity="0.35" stroke="#7dd3fc"/>
+    <text x="101" y="125" text-anchor="middle" font-size="11.5" fill="#7dd3fc">7/7</text>
+    <rect x="190" y="168" width="62" height="90" rx="3" fill="#7dd3fc" fill-opacity="0.35" stroke="#7dd3fc"/>
+    <text x="221" y="161" text-anchor="middle" font-size="11.5" fill="#7dd3fc">5/5</text>
+    <rect x="310" y="186" width="62" height="72" rx="3" fill="#7dd3fc" fill-opacity="0.35" stroke="#7dd3fc"/>
+    <text x="341" y="179" text-anchor="middle" font-size="11.5" fill="#7dd3fc">4/4</text>
+    <rect x="430" y="186" width="62" height="72" rx="3" fill="#7dd3fc" fill-opacity="0.35" stroke="#7dd3fc"/>
+    <text x="461" y="179" text-anchor="middle" font-size="11.5" fill="#7dd3fc">4/4</text>
+    <rect x="550" y="168" width="62" height="90" rx="3" fill="#7dd3fc" fill-opacity="0.35" stroke="#7dd3fc"/>
+    <text x="581" y="161" text-anchor="middle" font-size="11.5" fill="#7dd3fc">5/5</text>
+    <rect x="670" y="78" width="62" height="180" rx="3" fill="#7dd3fc" fill-opacity="0.35" stroke="#7dd3fc"/>
+    <text x="701" y="71" text-anchor="middle" font-size="11.5" fill="#7dd3fc">10/11</text>
+    <rect x="670" y="240" width="62" height="18" fill="#fbbf24" fill-opacity="0.5" stroke="#fbbf24"/>
+    <text x="101" y="280" text-anchor="middle" font-size="11" fill="#97a3b6">baseline</text>
+    <text x="221" y="280" text-anchor="middle" font-size="11" fill="#97a3b6">blackout</text>
+    <text x="341" y="280" text-anchor="middle" font-size="11" fill="#97a3b6">crop</text>
+    <text x="461" y="280" text-anchor="middle" font-size="11" fill="#97a3b6">watermark</text>
+    <text x="581" y="280" text-anchor="middle" font-size="11" fill="#97a3b6">capacity</text>
+    <text x="701" y="280" text-anchor="middle" font-size="11" fill="#97a3b6">resync</text>
+    <path d="M732 90H700V74" fill="none" stroke="#fbbf24" stroke-dasharray="4 3"/>
+    <text x="704" y="72" font-size="11.5" fill="#fbbf24">resync 组 1 项失败：T30</text>
+    <text x="8" y="312" font-size="12" fill="#fbbf24">合计 36 项：通过 35，失败 1（失败项 T30）</text>
+    <text x="8" y="332" font-size="11" fill="#97a3b6">分组构成：baseline 7（T1~T7）· blackout 5（T8~T12）· crop 4（T13~T16）</text>
+    <text x="8" y="350" font-size="11" fill="#97a3b6">watermark 4（T17~T20）· capacity 5（T21~T25）· resync 11（T26~T36）</text>
+    <text x="8" y="368" font-size="11" fill="#97a3b6">T30：仅嵌标尺 + 缩放 0.75× → 读回 513×513（期望 512×512），耗时 135.4 ms。总耗时 15702 ms</text>
+    <text x="8" y="388" font-size="11" fill="#97a3b6">黄色叠加段 = resync 组中唯一未通过的那 1 项</text>
+  </g>
+</svg>
+<p class="caption">图 6：浏览器 36 项测试结果。六根柱子按分组给出通过数与用例数，baseline 至 capacity 五组全部通过。resync 组的 1 项失败以高亮标出，对应仅嵌标尺并缩放 0.75× 的 T30。</p>
 
   <h3>5.2 基线退化测试</h3>
 
@@ -771,19 +983,33 @@
     为区分“写坏”与“从未写入”，脚本重建了全部 422 个候选载荷并计算汉明距离。距离为 0 的完好块有 309 个，恰好等于提取端上报的有效块数；距离为 1 至 60 的写过但损坏块有 113 个，其汉明距离最小 1、25 分位 1、中位 3、75 分位 5、最大 16；距离大于 60 的 562 个从未写入。113 个损坏块一共翻转 397 个比特。
   </p>
 
-  <pre class="diagram">  真实图 2649×1582（8402 字节载荷，K=211，N=422）的汉明距离指纹
-
-   距离  0（完好）        ██████████████████████████████  309 个
-   距离  1 ~ 5（轻微）    ███████████                    113 个（中位 3 个比特）
-   距离 > 60（从未写入）  ░░░░░░░░░░░░░░░░░░░░░░░░░░░░░░  562 个
-   推断被写入块数 = 309 + 113 = 422，与 N = 422 吻合。
-
-   把同一张图送进 JPEG 替身，再统计损坏块与翻错分布：
-     替身 q=98：完好 307/422，损坏 115 个，翻错 398 个，按对分布 [128, 21, 68, 160, 18, 3]
-     替身 q=95：完好 304/422，损坏 118 个，翻错 422 个，按对分布 [129, 29, 72, 166, 22, 4]
-     fixture 自身：完好 309/422，损坏 113 个，翻错 397 个，按对分布 [127, 24, 70, 157, 16, 3]
-   逐格对比显示，fixture 的错误指纹与高质量有损重存（q≈98）几乎完全吻合，
-   而与 q=95 以下逐渐分离。</pre>
+<svg class="figure" viewBox="0 0 840 345" role="img" aria-labelledby="figc-title figc-desc" preserveAspectRatio="xMidYMid meet">
+  <title id="figc-title">插图 真实隐写图的汉明距离指纹</title>
+  <desc id="figc-desc">真实图 2649×1582 的 422 个候选载荷中，汉明距离为 0 的完好块 309 个、距离 1 至 5 的轻微损坏块 113 个、距离大于 60 的从未写入块 562 个；换成 JPEG 替身后 q=98 的损坏分布与 fixture 自身几乎逐格吻合，说明损失来自载体历史压缩。</desc>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#7dd3fc">
+    <text x="8" y="26" font-size="12.5">真实图 2649×1582（8402 字节载荷，K = 211，N = 422）的汉明距离指纹</text>
+    <rect x="200" y="58" width="294" height="16" rx="3" fill="#7dd3fc" fill-opacity="0.45" stroke="#7dd3fc"/>
+    <text x="192" y="70" text-anchor="end" font-size="11.5" fill="#97a3b6">距离 0（完好）</text>
+    <text x="502" y="70" font-size="11.5" fill="#7dd3fc">309 个</text>
+    <rect x="200" y="88" width="107" height="16" rx="3" fill="#fbbf24" fill-opacity="0.5" stroke="#fbbf24"/>
+    <text x="192" y="100" text-anchor="end" font-size="11.5" fill="#97a3b6">距离 1~5（轻微）</text>
+    <text x="315" y="100" font-size="11.5" fill="#fbbf24">113 个</text>
+    <rect x="200" y="118" width="534" height="16" rx="3" fill="#97a3b6" fill-opacity="0.25" stroke="#97a3b6"/>
+    <text x="192" y="130" text-anchor="end" font-size="11.5" fill="#97a3b6">距离 &gt; 60（从未写入）</text>
+    <text x="742" y="130" font-size="11.5" fill="#97a3b6">562 个</text>
+    <text x="8" y="150" font-size="11.5" fill="#7dd3fc">推断被写入块数 = 309 + 113 = 422，与 N = 422 吻合（113 个损坏块的中位距离为 3 个比特）</text>
+    <line x1="0" y1="166" x2="840" y2="166" stroke="#7dd3fc" stroke-opacity="0.2"/>
+    <text x="8" y="188" font-size="11.5" fill="#97a3b6">把同一张图送进 JPEG 替身，再统计损坏块与翻错分布：</text>
+    <text x="8" y="208" font-size="11.5" fill="#97a3b6">替身 q=98：完好 307/422，损坏 115 个，翻错 398 个，按对分布 [128, 21, 68, 160, 18, 3]</text>
+    <text x="8" y="226" font-size="11.5" fill="#97a3b6">替身 q=95：完好 304/422，损坏 118 个，翻错 422 个，按对分布 [129, 29, 72, 166, 22, 4]</text>
+    <text x="8" y="244" font-size="11.5" fill="#97a3b6">fixture 自身：完好 309/422，损坏 113 个，翻错 397 个，按对分布 [127, 24, 70, 157, 16, 3]</text>
+    <text x="8" y="270" font-size="11.5" fill="#fbbf24">逐格对比：fixture 的错误指纹与高质量有损重存（q ≈ 98）几乎完全吻合</text>
+    <text x="8" y="288" font-size="11.5" fill="#97a3b6">而与 q = 95 以下逐渐分离 → 损失根因在载体自身的历史压缩，而非嵌入流程</text>
+    <text x="8" y="316" font-size="11.5" fill="#97a3b6">按安全块判据重新嵌入后，同一张图同一份载荷的零遮蔽存活率从 66.8% 提升到 83.2%</text>
+    <text x="8" y="336" font-size="11.5" fill="#97a3b6">黄色 = 轻微损坏块（1 至 5 个比特），蓝色 = 完好块，灰色 = 从未写入块</text>
+  </g>
+</svg>
+<p class="caption">插图：真实载体图的汉明距离指纹。水平条按汉明距离区间给出候选载荷的块数，距离为 0 的 309 块与距离 1 至 5 的 113 块合计 422，与 N 等于 422 吻合。其余 562 块的距离大于 60，属于从未写入的位置。</p>
 
   <p>
     该指纹分析支持一个与直觉相反的结论：这张图的 27% 损失并非来自嵌入流程，而是来自载体图自身的历史。载体图在成为载体之前已经经历过一次高质量 JPEG 有损重存，其承载块的部分系数对在嵌入前就处于临界状态。按安全块判据重新嵌入后，同一张图在同一份载荷下的零遮蔽存活率从 66.8% 提升到 83.2%。
@@ -870,22 +1096,28 @@
     实测的边际收益决定默认值。裕量从 2 提到自适应区间，改动量 MSE 从 244.463 升到 379.610，质量 75 正确率从 71.875% 升到 99.479%，这笔交换在抗压缩目标下成立。系数对数从 6 对降到 4 对，每区块比特数从 384 降到 256，换来 0.5× 缩放下存活率从 0% 到 72% 至 80%。冗余档位从紧凑换到标准，容量减少 40%，换来抗损坏比例从 20% 升到 50%，三组数字共同说明默认档位是把资源优先分配给鲁棒性的一侧；容量与抗损坏的兑换比例随载体规模变化，因此默认值只固定兑换的优先级而不是固定容量数值。
   </p>
 
-  <pre class="diagram">  三方权衡示意（默认档位于三角中部，而非某个顶点）
-
-                          隐蔽性更高
-                              ╱╲
-                             ╱  ╲
-                            ╱    ╲
-                           ╱ 默认 ╲
-                          ╱   档位  ╲
-                         ╱          ╲
-      容量更大 ──────────┴────────────┴────────── 更抗破坏
-      （每区块比特数）                        （可容忍丢失比例）
-
-   三个旋钮的实测影响区间：
-     裕量  8 → 32      改动量 MSE 244.463 → 379.610，Q75 正确率 71.875% → 99.479%
-     系数对 6 → 4      每区块 384 → 256 比特，0.5× 缩放存活率 0% → 72% 至 80%
-     冗余 紧凑 → 标准  容量 30.0 KB → 18.7 KB，抗损坏 20% → 50%</pre>
+<svg class="figure" viewBox="0 0 820 345" role="img" aria-labelledby="figd-title figd-desc" preserveAspectRatio="xMidYMid meet">
+  <title id="figd-title">插图 容量—鲁棒—隐蔽三方权衡</title>
+  <desc id="figd-desc">容量、鲁棒与隐蔽三个目标构成一个三角形，默认档位落在三角中部而非任何一个顶点；裕量 8 至 32 使 MSE 从 244.463 升到 379.610 而 Q75 正确率从 71.875% 升到 99.479%，系数对 6 降至 4 使每区块 384 降到 256 比特，冗余从紧凑换到标准使容量从 30.0 KB 降到 18.7 KB 而抗损坏从 20% 升到 50%。</desc>
+  <g font-family="ui-monospace, SFMono-Regular, Menlo, Consolas, monospace" font-size="12" fill="#7dd3fc">
+    <text x="8" y="26" font-size="12.5">三方权衡示意（默认档位位于三角中部，而非某个顶点）</text>
+    <path d="M400 52L150 290H650Z" fill="none" stroke="#7dd3fc" stroke-opacity="0.65"/>
+    <path d="M400 145L300 212H500Z" fill="#fbbf24" fill-opacity="0.18" stroke="#fbbf24"/>
+    <circle cx="400" cy="190" r="4" fill="#fbbf24"/>
+    <text x="400" y="84" text-anchor="middle" font-size="12" fill="#fbbf24">隐蔽性更高</text>
+    <text x="352" y="200" text-anchor="middle" font-size="11.5" fill="#fbbf24">默认档位</text>
+    <text x="150" y="306" text-anchor="middle" font-size="11.5" fill="#97a3b6">更小改动量</text>
+    <text x="650" y="306" text-anchor="middle" font-size="11.5" fill="#97a3b6">更强抗损坏</text>
+    <text x="150" y="326" text-anchor="middle" font-size="11.5" fill="#97a3b6">容量更大（每区块比特数）</text>
+    <text x="400" y="216" text-anchor="middle" font-size="11.5" fill="#fbbf24">默认档位</text>
+    <text x="650" y="326" text-anchor="middle" font-size="11.5" fill="#97a3b6">更抗破坏（可容忍丢失比例）</text>
+    <line x1="20" y1="238" x2="800" y2="238" stroke="#7dd3fc" stroke-opacity="0.2"/>
+    <text x="8" y="260" font-size="11.5" fill="#97a3b6">裕量 8 → 32：改动量 MSE 244.463 → 379.610，Q75 正确率 71.875% → 99.479%</text>
+    <text x="8" y="280" font-size="11.5" fill="#97a3b6">系数对 6 → 4：每区块 384 → 256 比特，0.5× 缩放存活率 0% → 72% 至 80%</text>
+    <text x="8" y="300" font-size="11.5" fill="#97a3b6">冗余 紧凑 → 标准：容量 30.0 KB → 18.7 KB，抗损坏 20% → 50%（默认取最稳的一侧）</text>
+  </g>
+</svg>
+<p class="caption">插图：容量、鲁棒与隐蔽的三方权衡。三角形的三个顶点分别对应隐蔽性、容量与抗破坏三个方向，默认档位落在三角中部而不是任何一个顶点。下方列出裕量、系数对数与冗余档位三个旋钮的实测影响区间。</p>
 
   <p>
     默认值取最稳的一侧而非最大容量的一侧，理由是失败的代价不对称：容量不足会触发自动缩放并把结果如实告知，而提取失败往往是静默的，接收端只会得到一张读不出内容的图。页面上仍然保留其余档位，因为部分场景确实更清楚自身信道，例如只在本机两台设备之间用数据线传图时，20% 的容错已经足够。默认值只在使用者没有明确判断时生效。

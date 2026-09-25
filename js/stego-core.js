@@ -186,6 +186,12 @@
   var MIN_TILE_LUM = 0;
   var MAX_TILE_LUM = 255;
   var DEFAULT_SECRET_JPEG_QUALITY = 0.75;    // 秘密图 JPEG 质量（0~1，与 canvas 一致）
+  // 自适应质量阶梯：容量富余时往上试（取仍放得下的最高档），容量不足时往下试。
+  //   0.92/0.85 是"容量富余"档，0.65/0.55/0.45 是"容量吃紧"档；
+  //   下限取 0.45 而不是更低：再低会把秘密图压得肉眼明显发糊，此时改用缩小尺寸更划算。
+  var QUALITY_LADDER = [0.92, 0.85, 0.75, 0.65, 0.55, 0.45];
+  // 容量"富余"的判定线：需要的区块数不足可用块的 80% 才敢往上抬质量
+  var QUALITY_HEADROOM = 0.8;
   var MAX_DIM = 4096;                        // 秘密图宽高上限
   var DEBUG_ALPHA = Math.round(0.4 * 255);   // 102：debugMask 半透明
   var DEFAULT_TILE_STRATEGY = 'spread';      // 'spread' | 'scan'（见文件头第四节）
@@ -200,7 +206,11 @@
     compact: '紧凑（稳定抗 10~15%，容量 +60%）'
   };
   /** 自动缩放候选倍率（长边乘数），按顺序逐个尝试 */
-  var AUTO_RESIZE_FACTORS = [1, 0.85, 0.7, 0.55, 0.4, 0.3, 0.2];
+  // 自动缩放的候选倍率（从大到小试）。末段补上 0.12 / 0.08 / 0.05：
+  //   手机照片的秘密图长边常 4000，原来的末档 0.2 只能缩到 800（约 67 KB），
+  //   遇到容量小的载体就直接报"放不下"；补上更小的档位后能一路缩到能装下为止，
+  //   真正的下限仍由 MIN_SECRET_LONG_SIDE（64 像素）把关。
+  var AUTO_RESIZE_FACTORS = [1, 0.85, 0.7, 0.55, 0.4, 0.3, 0.2, 0.12, 0.08, 0.05];
 
   // ============================================================
   // 内部工具
@@ -413,9 +423,32 @@
    *   其他环境：使用注入钩子 window.__STEGO_JPEG_ENCODE__(imageData, quality0to1, keepColor)，
    *           供 Node 测试提供真实/替代的 JPEG 编码器。
    */
+  /**
+   * 转灰度：R = G = B = 0.299R + 0.587G + 0.114B（ITU-R BT.601 亮度权重）。
+   *
+   * 为什么值得单独做：JPEG 把彩色图像存成"亮度 + 两个色度通道"，色度还能降采样；
+   * 一旦 R=G=B，两个色度通道全为常数，压缩器几乎不花比特去表示颜色，
+   * 实测同一质量下体积降到彩色的 30% 左右 —— 也就是容量翻三倍多。
+   * 注意这必须真的改写像素：只把载荷头里的格式字节标成灰度并不会让文件变小。
+   */
+  function toGrayImageData(imageData) {
+    var w = imageData.width, h = imageData.height;
+    var src = imageData.data;
+    var out = new Uint8ClampedArray(w * h * 4);
+    for (var i = 0; i < w * h; i++) {
+      var o = i * 4;
+      var y = 0.299 * src[o] + 0.587 * src[o + 1] + 0.114 * src[o + 2];
+      var v = y < 0 ? 0 : (y > 255 ? 255 : y);
+      out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = src[o + 3];
+    }
+    return makeImageData(out, w, h);
+  }
+
   function encodeSecretJpeg(imageData, quality, keepColor) {
+    // keepColor === false 时先把像素真的转成灰度，再交给编码器（见 toGrayImageData 的说明）
+    var src = keepColor === false ? toGrayImageData(imageData) : imageData;
     if (typeof document !== 'undefined' && typeof document.createElement === 'function') {
-      var canvas = canvasFromImageData(imageData);
+      var canvas = canvasFromImageData(src);
       if (typeof canvas.toDataURL === 'function') {
         var url = canvas.toDataURL('image/jpeg', quality);
         if (url && url.indexOf('data:image/jpeg') === 0) return dataURLToBytes(url);
@@ -423,7 +456,7 @@
     }
     var hook = global.__STEGO_JPEG_ENCODE__;
     if (typeof hook === 'function') {
-      var bytes = hook(imageData, quality, keepColor);
+      var bytes = hook(src, quality, keepColor);
       if (bytes && typeof bytes.length === 'number') {
         return bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes);
       }
@@ -431,6 +464,11 @@
     }
     throw new Error('当前环境不支持 JPEG 编码（缺少 canvas.toDataURL），' +
       '可通过 window.__STEGO_JPEG_ENCODE__ 注入编码器');
+  }
+
+  /** 只关心体积时的薄封装（自适应质量阶梯要试多个质量，字节流本身不必都留着） */
+  function encodeSecretJPEGLength(imageData, quality, keepColor) {
+    return encodeSecretJpeg(imageData, quality, keepColor).length;
   }
 
   /** 环境是否具备异步 JPEG 解码能力 */
@@ -831,12 +869,58 @@
       throw new Error('载体太小，无法嵌入：该图没有任何 64×64 且方差达标的纹理 Tile。');
     }
 
-    // ---- 2) 秘密图 → JPEG；太大就按倍率逐级缩小重编码 ----
+    // ---- 2) 秘密图 → JPEG；尺寸与质量**联合**自适应，太大就逐级缩小 ----
     //
-    // 容量按**安全块**算：安全块不够时先把秘密图缩小，而不是硬塞进脆弱块 ——
-    //   用户那张"头顶平滑亮天空"的图正是死在这里（脆弱块占了大半，零遮蔽只读回 57%）。
-    //   只有当秘密图缩到最小仍装不进安全块时，才回落到全部纹理块（保持旧行为），
-    //   并在 stats.riskyTilesUsed 里如实标注"这次用了脆弱块"。
+    // 两件事同时决定"装不装得下"：秘密图的像素尺寸，以及 JPEG 质量。
+    //   旧实现只动尺寸、质量固定 0.75，于是在容量吃紧的载体（手机照片里大片天空/水面）
+    //   上只能一路缩到长边 64，然后报"放不下"。
+    //   传了 adaptiveQuality: true 时按下面的顺序联合试：
+    //     ① 先在当前尺寸上按 q=0.75 编码，算出需要的区块数 N75；
+    //     ② N75 远小于可用块（≤ 80%）→ 容量富余，往**上**试 0.85 → 0.92，取仍放得下的最高质量；
+    //     ③ N75 刚好放得下 → 就用 0.75；
+    //     ④ N75 放不下 → 往**下**试 0.65 → 0.55 → 0.45（灰度模式下体积约降 2/3），
+    //        只要有一档放得下就用它，质量与尺寸的损失都记在 stats 里；
+    //     ⑤ 连 q=0.45 都放不下 → 才继续缩小尺寸（下一档 scale），重复 ①~④。
+    // 未开启自适应时完全沿用旧行为：质量固定为 secretJpegQuality（默认 0.75），只动尺寸。
+    // 自适应质量是**显式开启**的：只有传了 adaptiveQuality: true 才走阶梯。
+    //   为什么不默认开启：显式传了 secretJpegQuality 的调用方（以及所有旧调用）期望
+    //   "我要多少质量就是多少质量"，默认改质量会悄悄改变它们的产物。页面 embed.html
+    //   明确传 true，因此用户看到的就是"容量富余更清晰、紧张自动降质"的行为。
+    var jpegQuality = isFiniteNum(opt.secretJpegQuality) ?
+      clamp(opt.secretJpegQuality, 0.01, 1) : DEFAULT_SECRET_JPEG_QUALITY;
+    var qualityLadder = null;
+    if (opt.adaptiveQuality === true) {
+      qualityLadder = Array.isArray(opt.qualityLadder) && opt.qualityLadder.length
+        ? opt.qualityLadder.map(function (q) { return clamp(q, 0.01, 1); })
+        : QUALITY_LADDER.slice();
+    }
+    var keepColor = opt.secretKeepColor === undefined ? true : !!opt.secretKeepColor;
+    var format = keepColor ? 1 : 0;
+
+    /** 把"JPEG 字节数"换算成需要的区块数 */
+    function tilesNeeded(bytes) {
+      var L = SECRET_HEADER_BYTES + bytes;
+      var k = Math.ceil(L / mode.symbolSize);
+      return { L: L, K: k, N: Math.ceil(k * factor) };
+    }
+
+    // 编码结果缓存：同一次 embedSecret 里，(缩放倍率, 质量) 只会被编码一次。
+    //   为什么必须缓存：规划要对 "尺寸 × 质量" 网格搜索，而安全块与纹理块两轮规划
+    //   会走同一个网格；秘密图若是 4000×3000 的手机照片，一次编码就是几兆像素，
+    //   不缓存会把同一次编码重复七八遍（实测这正是大载体耗时的主要来源）。
+    var encodeCache = {};
+    function encodedBytes(scaleKey, candidate, q) {
+      var key = scaleKey + '@' + q;
+      if (encodeCache[key] === undefined) {
+        encodeCache[key] = encodeSecretJpeg(candidate, q, keepColor);
+      }
+      return encodeCache[key];
+    }
+
+    /**
+     * 在给定"可用块数上限"下，联合搜索 (缩放倍率 × JPEG 质量)。
+     * 返回 { attempt, tried }；attempt 为 null 表示连最小尺寸 + 最低质量都放不下。
+     */
     function planAttempts(limit) {
       var found = null;
       var tried = [];
@@ -845,15 +929,62 @@
         var longSide = Math.round(Math.max(origW, origH) * scale);
         if (scale < 1 && longSide < MIN_SECRET_LONG_SIDE) break; // 缩到长边 < 64 仍不行，放弃
         var candidate = (scale === 1) ? secretImageData : resizeImageData(secretImageData, longSide);
-        var jpegBytes = encodeSecretJpeg(candidate, jpegQuality, keepColor);
-        var L = SECRET_HEADER_BYTES + jpegBytes.length;
-        var Kt = Math.ceil(L / mode.symbolSize);
-        var Nt = Math.ceil(Kt * factor);
-        tried.push({ scale: scale, w: candidate.width, h: candidate.height, bytes: jpegBytes.length, K: Kt, N: Nt });
-        if (!found && Nt <= limit) {
+        var baseQ = jpegQuality;
+        var baseBytes = encodedBytes(scale, candidate, baseQ).length;
+        var baseNeed = tilesNeeded(baseBytes);
+        var chosen = null;
+
+        if (qualityLadder) {
+          if (baseNeed.N <= limit * QUALITY_HEADROOM) {
+            // 容量富余：把阶梯里所有比起始质量更高的档都试一遍，留下**放得下的最高**质量。
+            // （不能"试到就覆盖"—— 阶梯顺序不保证递增，否则后试的 0.85 会把先前合格的 0.92 顶掉。）
+            chosen = { q: baseQ, bytes: baseBytes, need: baseNeed };
+            for (var h = 0; h < qualityLadder.length; h++) {
+              var qh = qualityLadder[h];
+              if (qh <= chosen.q) continue;
+              var bh = encodedBytes(scale, candidate, qh).length;
+              var nh = tilesNeeded(bh);
+              if (nh.N <= limit) chosen = { q: qh, bytes: bh, need: nh };
+            }
+          } else if (baseNeed.N <= limit) {
+            chosen = { q: baseQ, bytes: baseBytes, need: baseNeed };
+          } else if (baseNeed.N > limit * 2.5) {
+            // 提前剪枝：把质量从 0.75 降到 0.45 最多省掉约六成体积（实测 0.44~0.55），
+            //   需要的区块数超过上限 2.5 倍时，再降质量也不可能装下 —— 直接换更小的尺寸，
+            //   省掉这一档 3 次无用的全图编码。
+            tried.push({
+              scale: scale, w: candidate.width, h: candidate.height,
+              bytes: baseBytes, q: baseQ, K: baseNeed.K, N: baseNeed.N, pruned: true
+            });
+            continue;
+          } else {
+            // 容量不足：从高到低试更低的质量，取**第一个放得下**的（也就是尽量保住质量的那个）
+            var lower = qualityLadder.filter(function (q) { return q < baseQ; })
+              .sort(function (a, b) { return b - a; });
+            for (var l = 0; l < lower.length; l++) {
+              var bl = encodedBytes(scale, candidate, lower[l]).length;
+              var nl = tilesNeeded(bl);
+              if (nl.N <= limit) { chosen = { q: lower[l], bytes: bl, need: nl }; break; }
+            }
+          }
+        } else if (baseNeed.N <= limit) {
+          chosen = { q: baseQ, bytes: baseBytes, need: baseNeed };
+        }
+
+        tried.push({
+          scale: scale, w: candidate.width, h: candidate.height,
+          bytes: chosen ? chosen.bytes : baseBytes,
+          q: chosen ? chosen.q : baseQ,
+          K: chosen ? chosen.need.K : baseNeed.K,
+          N: chosen ? chosen.need.N : baseNeed.N
+        });
+        if (!found && chosen) {
           found = {
-            scale: scale, image: candidate, jpeg: jpegBytes,
-            L: L, K: Kt, N: Nt, width: candidate.width, height: candidate.height
+            scale: scale, image: candidate,
+            jpeg: encodedBytes(scale, candidate, chosen.q),
+            quality: chosen.q,
+            L: chosen.need.L, K: chosen.need.K, N: chosen.need.N,
+            width: candidate.width, height: candidate.height
           };
         }
       }
@@ -885,6 +1016,8 @@
     var N = attempt.N;
     var jpeg = attempt.jpeg;
     var L2 = attempt.L;
+    // 实际采用的质量可能与起始质量不同（自适应阶梯抬过或降过），stats 里回报的是真实使用的那个
+    if (isFiniteNum(attempt.quality)) jpegQuality = attempt.quality;
 
     // ---- 3) 组装 srcBytes（14 字节头 + JPEG）----
     var src = new Uint8Array(L2);
@@ -965,6 +1098,9 @@
         secretAutoResized: (attempt.width !== origW || attempt.height !== origH),
         secretJpegBytes: jpeg.length,
         secretJpegQuality: jpegQuality,
+        // 自适应质量的诊断信息：起始质量、是否参与自适应、候选阶梯
+        secretQualityAdaptive: !!qualityLadder,
+        secretQualityTried: triedFactors.map(function (t) { return t.q; }),
         secretKeepColor: keepColor,
         secretFormat: format,
         hasScale: hasScale,

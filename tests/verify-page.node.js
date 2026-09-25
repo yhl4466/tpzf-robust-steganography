@@ -412,12 +412,12 @@ const PAGES = [
           `两个 accept="image/*"=${(h.match(/accept="image\/\*"/g) || []).length} 处`
       },
       {
-        name: '三态状态提示：未上传（灰）/ 容量不足（黄，含"将自动缩小至 W×H"）/ 可嵌入（绿）',
-        fn: (h) => /上传两张图后可开始/.test(h) && /将自动缩小至/.test(h) &&
+        name: '三态状态提示：未上传（灰）/ 容量不足（黄，含"已自动缩至 W×H"）/ 可嵌入（绿）',
+        fn: (h) => /上传两张图后可开始/.test(h) && /已自动缩至 /.test(h) &&
           /已就绪，点击下方按钮开始/.test(h) &&
           /\.ready\.warn|ready warn/.test(h) && /\.ready\.ok|ready ok/.test(h),
         detail: (h) => `未上传文案=${/上传两张图后可开始/.test(h)}；` +
-          `容量不足文案=${/将自动缩小至/.test(h)}；可嵌入文案=${/已就绪，点击下方按钮开始/.test(h)}；` +
+          `自动缩小文案=${/已自动缩至 /.test(h)}；可嵌入文案=${/已就绪，点击下方按钮开始/.test(h)}；` +
           `黄/绿样式=${/ready warn/.test(h)}/${/ready ok/.test(h)}`
       },
       {
@@ -483,27 +483,54 @@ const PAGES = [
           `按钮初始 disabled=${/class="simbtn"[^>]*disabled/.test(h)}；测试期间禁用=${/setSimButtons\(true\)/.test(h)}`
       },
       {
-        name: '自动生成载体图：折叠面板 + 风格/尺寸选择 + 换一张/用这张 + 预览与质量评估',
+        name: '自动生成载体图：折叠面板 + 风格/尺寸选择 + 换一张/用这张 + 进度条 + 预览与质量评估',
         fn: (h) => /<details id="genPanel">/.test(h) && /让工具帮你生成一张/.test(h) &&
           /id="genStyle"/.test(h) && /id="genSize"/.test(h) &&
           /id="genShuffleBtn"[^>]*>🎲 换一张/.test(h) && /id="genUseBtn"[^>]*>✅ 用这张/.test(h) &&
-          /id="genThumb"/.test(h) && /id="genQuality"/.test(h) &&
-          /1024x1024/.test(h) && /2048x2048/.test(h) && /1024x576/.test(h),
+          /id="genThumb"/.test(h) && /id="genQuality"/.test(h) && /id="genProgressBar"/.test(h) &&
+          /1024x1024/.test(h) && /2048x2048/.test(h) && /4096x4096/.test(h) &&
+          /2048x1152/.test(h) && /3840x2160/.test(h),
         detail: (h) => `折叠面板=${/<details id="genPanel">/.test(h)}；风格/尺寸选择=${/id="genStyle"/.test(h)}/${/id="genSize"/.test(h)}；` +
           `换一张/用这张=${/id="genShuffleBtn"[^>]*>🎲 换一张/.test(h)}/${/id="genUseBtn"[^>]*>✅ 用这张/.test(h)}；` +
-          `预览与评估=${/id="genThumb"/.test(h)}/${/id="genQuality"/.test(h)}`
+          `预览/进度/评估=${/id="genThumb"/.test(h)}/${/id="genProgressBar"/.test(h)}/${/id="genQuality"/.test(h)}；` +
+          `五个尺寸档=${['1024x1024', '2048x2048', '4096x4096', '2048x1152', '3840x2160'].filter((v) => h.indexOf(v) !== -1).length}/5`
       },
       {
-        name: '生成器引入与调用：carrier-generator.js 在核心库之后加载，且生成图走同一条 embedSecret 流程',
+        name: '生成器引入与调用：carrier-generator.js 在核心库之后加载，分片异步生成并走同一条 embedSecret 流程',
         fn: (h) => /js\/stego-core\.js"><\/script>\s*<script src="js\/carrier-generator\.js"><\/script>/.test(h) &&
-          /CarrierGenerator\.generate\(/.test(h) &&
+          /CarrierGenerator\.generateAsync\(/.test(h) &&
+          /onProgress: function \(phase, done, total\)/.test(h) &&
           /state\.carrier = genState\.result\.imageData/.test(h) &&
           /refreshReady\(\)/.test(h) &&
           /analyzeCapacity/.test(h),
         detail: (h) => `脚本顺序=${/js\/stego-core\.js"><\/script>\s*<script src="js\/carrier-generator\.js"><\/script>/.test(h)}；` +
-          `调用 generate=${/CarrierGenerator\.generate\(/.test(h)}；` +
+          `调用 generateAsync=${/CarrierGenerator\.generateAsync\(/.test(h)}；` +
+          `进度回调=${/onProgress: function \(phase, done, total\)/.test(h)}；` +
           `填入 state.carrier=${/state\.carrier = genState\.result\.imageData/.test(h)}；` +
           `复用容量分析=${/analyzeCapacity/.test(h)}`
+      },
+      {
+        name: '手机优化：灰度模式开关 + 画质/容量三档 + 上传后自动适配提示 + 装不下时的三条建议 + 窄屏默认紧凑档',
+        fn: (h) => /id="secretGray"/.test(h) && /id="secretMode"/.test(h) &&
+          /高清优先/.test(h) && /均衡（推荐）/.test(h) && /容量优先/.test(h) &&
+          /id="fitStatus"/.test(h) &&
+          /秘密图偏大，已自动缩至 /.test(h) &&
+          /① 换用本页的"自动生成载体图"功能/.test(h) &&
+          /② 更换纹理更丰富的载体图/.test(h) &&
+          /③ 开启"灰度模式"/.test(h) &&
+          /innerWidth\s*\|\|\s*0/.test(h) && /sel\.value === 'standard'/.test(h) && /'compact'/.test(h),
+        detail: (h) => `灰度开关=${/id="secretGray"/.test(h)}；三档=${/id="secretMode"/.test(h)}；` +
+          `自动适配提示=${/秘密图偏大，已自动缩至 /.test(h)}；` +
+          `三条建议=${[/① 换用本页的"自动生成载体图"功能/, /② 更换纹理更丰富的载体图/, /③ 开启"灰度模式"/].filter((re) => re.test(h)).length}/3；` +
+          `窄屏默认紧凑=${/innerWidth\s*\|\|\s*0/.test(h) && /'compact'/.test(h)}`
+      },
+      {
+        name: '自适应质量：embedSecret 传入 adaptiveQuality + qualityLadder，且按策略决定是否转灰度',
+        fn: (h) => /adaptiveQuality: true/.test(h) && /qualityLadder: pol\.ladder/.test(h) &&
+          /secretKeepColor: pol\.keepColor/.test(h) && /toGrayData/.test(h),
+        detail: (h) => `adaptiveQuality=${/adaptiveQuality: true/.test(h)}；` +
+          `qualityLadder=${/qualityLadder: pol\.ladder/.test(h)}；` +
+          `keepColor=${/secretKeepColor: pol\.keepColor/.test(h)}；真实转灰度=${/toGrayData/.test(h)}`
       },
       {
         name: '底部"了解技术原理"链接指向 tech.html',
@@ -638,21 +665,35 @@ const PAGES = [
           .filter((k) => h.indexOf(k) === -1).length + ' 个主题缺失'
       },
       {
-        name: '至少 6 幅图与 8 张表，编号连续（图 1~图 6 / 表 1~表 8），且图表均为内联（无外部图片）',
+        name: '图表：图 1~图 6 为内联 SVG（每张 ≤ 5KB、含 <title>/<desc>、配 <p class="caption">），表 1~表 8 编号齐全，无外部图片',
         fn: (h) => {
           let figs = 0, tabs = 0;
           for (let i = 1; i <= 6; i++) if (new RegExp(`图\\s?${i}[：:　 ]`).test(h)) figs++;
           for (let i = 1; i <= 8; i++) if (new RegExp(`表\\s?${i}[：:　 ]`).test(h)) tabs++;
-          return figs >= 6 && tabs >= 8 &&
-            (h.match(/<pre class="diagram">/g) || []).length >= 6 &&
+          const svgs = h.match(/<svg[\s\S]*?<\/svg>/g) || [];
+          // 正式插图：必须有 <title id> 与 <desc id>，且 ≤ 5KB
+          const figures = svgs.filter((s) =>
+            /<title[^>]*id=/.test(s) && /<desc[^>]*id=/.test(s) && s.length <= 5000);
+          // 其余允许存在的是小装饰性图标（例如箭头、圆点），要求足够小
+          const deco = svgs.filter((s) => figures.indexOf(s) === -1);
+          const svgOk = figures.length >= 6 && deco.every((s) => s.length <= 1000);
+          const captions = (h.match(/<p class="caption">/g) || []).length;
+          return figs >= 6 && tabs >= 8 && svgOk && captions >= 6 &&
+            (h.match(/<pre class="diagram">/g) || []).length === 0 &&
             !/<img\b/i.test(h) && !/background-image/.test(h);
         },
         detail: (h) => {
           const figs = [1, 2, 3, 4, 5, 6].filter((i) => new RegExp(`图\\s?${i}[：:　 ]`).test(h));
           const tabs = [1, 2, 3, 4, 5, 6, 7, 8].filter((i) => new RegExp(`表\\s?${i}[：:　 ]`).test(h));
+          const svgs = h.match(/<svg[\s\S]*?<\/svg>/g) || [];
+          const figures = svgs.filter((s) =>
+            /<title[^>]*id=/.test(s) && /<desc[^>]*id=/.test(s) && s.length <= 5000);
+          const deco = svgs.filter((s) => figures.indexOf(s) === -1);
           return `图编号=[${figs.join(',')}]；表编号=[${tabs.join(',')}]；` +
-            `字符图 <pre class="diagram">=${(h.match(/<pre class="diagram">/g) || []).length}；` +
-            `<img>=${/<img\b/i.test(h)}`;
+            `合规插图=${figures.length} 张（字符数 [${figures.map((s) => s.length).join(', ')}]）；` +
+            `装饰性小图标=${deco.length} 张（最大 ${deco.length ? Math.max(...deco.map((s) => s.length)) : 0} 字符）；` +
+            `caption=${(h.match(/<p class="caption">/g) || []).length}；` +
+            `残留字符图=${(h.match(/<pre class="diagram">/g) || []).length}；<img>=${/<img\b/i.test(h)}`;
         }
       },
       {

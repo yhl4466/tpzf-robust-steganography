@@ -208,19 +208,91 @@ check('AC1', 'CarrierGenerator 契约：generate 返回 {imageData, seed, style,
 }
 
 // ============================================================
-// AC8 性能
+// AC8 性能（1024² ≤ 400ms、2048² ≤ 1.8s、4096² ≤ 8s）
 // ============================================================
 {
   const t1 = Date.now();
   CG.generate({ width: 1024, height: 1024, style: 'grass', seed: 8 });
   const dt1 = Date.now() - t1;
   const t2 = Date.now();
-  CG.generate({ width: 2048, height: 2048, style: 'abstract', seed: 9 });
+  CG.generate({ width: 2048, height: 2048, style: 'wood', seed: 9 });
   const dt2 = Date.now() - t2;
-  check('AC8', '性能：1024×1024 ≤ 800ms、2048×2048 ≤ 3000ms',
-    dt1 <= 800 && dt2 <= 3000,
-    `1024² = ${dt1} ms（要求 ≤ 800）；2048² = ${dt2} ms（要求 ≤ 3000）`);
+  const t3 = Date.now();
+  CG.generate({ width: 4096, height: 4096, style: 'cloud', seed: 10 });
+  const dt3 = Date.now() - t3;
+  check('AC8', '性能：1024×1024 ≤ 400ms、2048×2048 ≤ 1.8s、4096×4096 ≤ 8s',
+    dt1 <= 400 && dt2 <= 1800 && dt3 <= 8000,
+    `1024² = ${dt1} ms（≤400）；2048² = ${dt2} ms（≤1800）；4096² = ${dt3} ms（≤8000）`);
 }
+
+// ============================================================
+// AC-扩展：尺寸上限放宽到 8192（用细长条验证，避免测试跑 26 秒）
+// ============================================================
+{
+  const c = CG.CONST || {};
+  const okLimit = c.MAX_DIM === 8192;
+  const wide = CG.generate({ width: 8192, height: 64, style: 'rock', seed: 3 });
+  const tall = CG.generate({ width: 64, height: 8192, style: 'rock', seed: 3 });
+  let threw = null;
+  try { CG.generate({ width: 8193, height: 64 }); } catch (e) { threw = e; }
+  check('AC-扩展', '尺寸上限放宽到 8192（8192×64 与 64×8192 可生成；8193 抛 RangeError）',
+    okLimit && wide.imageData.width === 8192 && tall.imageData.height === 8192 &&
+    !!threw && threw instanceof RangeError,
+    `MAX_DIM=${c.MAX_DIM}；8192×64 → ${wide.imageData.width}×${wide.imageData.height}；` +
+    `64×8192 → ${tall.imageData.width}×${tall.imageData.height}；8193 → ${threw ? threw.constructor.name : '未抛错'}`);
+}
+
+// ============================================================
+// AC-扩展：onProgress 回调（同步接口）
+// ============================================================
+{
+  const seen = [];
+  const r = CG.generate({
+    width: 512, height: 512, style: 'grass', seed: 11,
+    onProgress: (phase, done, total) => seen.push([phase, done, total])
+  });
+  const monotonic = seen.every((s, i) => i === 0 || s[1] >= seen[i - 1][1]);
+  const last = seen[seen.length - 1] || [];
+  check('AC-扩展', 'onProgress(phase, done, total)：随分带推进单调递增，最后一次 done=total',
+    seen.length > 0 && monotonic && last[1] === last[2] && last[0] === 'generate',
+    `回调 ${seen.length} 次（512² → 64 个 8 行带）；末次 [${last.join(', ')}]；单调=${monotonic}`);
+}
+
+// ============================================================
+// AC-扩展：generateAsync 分片异步——不卡死主线程、结果与同步一致
+// ============================================================
+(async () => {
+  const ticks = { n: 0 };
+  const timer = setInterval(() => { ticks.n++; }, 1);
+  const progress = [];
+  const t0 = Date.now();
+  const async = await CG.generateAsync({
+    width: 1024, height: 1024, style: 'abstract', seed: 20240925,
+    onProgress: (phase, done, total) => progress.push([phase, done, total])
+  });
+  const dt = Date.now() - t0;
+  clearInterval(timer);
+  const sync = CG.generate({ width: 1024, height: 1024, style: 'abstract', seed: 20240925 });
+  let same = async.imageData.data.length === sync.imageData.data.length;
+  for (let i = 0; same && i < sync.imageData.data.length; i++) {
+    if (async.imageData.data[i] !== sync.imageData.data[i]) same = false;
+  }
+  check('AC-扩展', 'generateAsync：边生成边让出主线程（期间计时器仍在跑）、进度回调完整、结果与同步 generate 逐字节一致',
+    ticks.n >= 5 && progress.length > 1 && same &&
+    async.stats.minMargin >= 12 && async.stats.blockMarginOkRatio >= 0.95,
+    `1024² 异步耗时 ${dt} ms；期间 setInterval(1ms) 触发 ${ticks.n} 次（≥5 即证明让出了主线程）；` +
+    `进度回调 ${progress.length} 次；与同步结果逐字节一致=${same}；minMargin=${async.stats.minMargin.toFixed(1)}`);
+
+  // ============================================================
+  // 汇总
+  // ============================================================
+  const total = results.length;
+  console.log('\n' + '='.repeat(90));
+  console.log(`总计 ${total} 项：通过 ${total - failures}，失败 ${failures}`);
+  console.log('验收标准：' + results.map((r) => `${r.id}=${r.pass ? 'PASS' : 'FAIL'}`).join('  '));
+  console.log('='.repeat(90));
+  process.exit(failures === 0 ? 0 : 1);
+})();
 
 // ============================================================
 // AC9 视觉规律性：无 8×8 网格线、无周期性（自相关检验）
@@ -268,12 +340,3 @@ check('AC1', 'CarrierGenerator 契约：generate 返回 {imageData, seed, style,
     `[${peaks.map((p) => p.toFixed(3)).join(', ')}]，邻域 lag 均值 = ${bgMean.toFixed(3)}（比值 ${(maxPeak / Math.max(0.02, bgMean)).toFixed(2)}×）`);
 }
 
-// ============================================================
-// 汇总
-// ============================================================
-const total = results.length;
-console.log('\n' + '='.repeat(90));
-console.log(`总计 ${total} 项：通过 ${total - failures}，失败 ${failures}`);
-console.log('验收标准：' + results.map((r) => `${r.id}=${r.pass ? 'PASS' : 'FAIL'}`).join('  '));
-console.log('='.repeat(90));
-process.exit(failures === 0 ? 0 : 1);

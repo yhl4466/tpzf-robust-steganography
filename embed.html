@@ -124,15 +124,18 @@
           <div class="opt">
             <label for="genSize">尺寸</label>
             <select id="genSize">
-              <option value="1024x1024" selected>1024 × 1024（推荐，约 1 秒）</option>
-              <option value="2048x2048">2048 × 2048（更清晰，约 2 秒）</option>
-              <option value="1024x576">1024 × 576（横构图，约 0.6 秒）</option>
+              <option value="1024x1024">1024 × 1024（快，约 0.4 秒）</option>
+              <option value="2048x2048" selected>2048 × 2048（推荐，约 1.2 秒）</option>
+              <option value="4096x4096">4096 × 4096（大图，约 5 秒）</option>
+              <option value="2048x1152">2048 × 1152（16:9 横构图）</option>
+              <option value="3840x2160">3840 × 2160（4K 横构图，约 4 秒）</option>
             </select>
           </div>
           <div class="simrow">
             <button type="button" id="genShuffleBtn">🎲 换一张</button>
             <button type="button" id="genUseBtn" disabled>✅ 用这张</button>
           </div>
+          <div class="progress"><i id="genProgressBar"></i></div>
           <div class="hint" id="genHint">点"🎲 换一张"开始生成</div>
           <canvas id="genThumb" class="thumb hidden"></canvas>
           <div class="status" id="genQuality"></div>
@@ -147,6 +150,19 @@
         <div class="hint" id="secretHint">尚未选择</div>
         <canvas id="secretThumb" class="thumb hidden"></canvas>
         <div class="meta" id="secretMeta"></div>
+
+        <!-- 画质 vs 容量：三个快捷档位，决定"秘密图缩到多小 / 压到多糊" -->
+        <div class="opt">
+          <label for="secretMode">画质 vs 容量</label>
+          <select id="secretMode">
+            <option value="hd">高清优先 —— 秘密图尽量大、质量高（可能失败）</option>
+            <option value="balanced" selected>均衡（推荐）—— 自动缩放 + 自适应质量</option>
+            <option value="capacity">容量优先 —— 缩到最小 + 灰度 + 低质量，先保证装得下</option>
+          </select>
+        </div>
+        <p class="optdesc" id="secretModeDesc"></p>
+        <!-- 自动适配结果：正常是绿色"已就绪"，被缩小过是黄色说明，实在装不下才红字给建议 -->
+        <div class="status" id="fitStatus"></div>
       </div>
     </div>
     <p class="tip" id="secretNote"></p>
@@ -231,6 +247,11 @@
       </select>
     </div>
 
+    <div class="opt">
+      <label for="secretGray">灰度模式</label>
+      <span class="checkline"><input type="checkbox" id="secretGray"> 把秘密图转成灰度再嵌入（体积实测降到彩色的 66%~93%，即容量多 10%~50%；同样容量下还能用更高的 JPEG 质量。代价是还原出来是黑白图）</span>
+    </div>
+
     <p class="optdesc" id="advancedDesc"></p>
   </details>
 </main>
@@ -309,16 +330,79 @@
     return window.ImageUtils.getImageData(resized);
   }
 
-  /** 估算某张图编码成 JPEG 后的字节数（先用同步接口量一次，与真正嵌入时同一质量） */
-  function jpegBytesOf(imageData) {
+  /**
+   * 把像素真的转成灰度（R=G=B=亮度）。必须真转：JPEG 的色度通道全为常数时
+   * 压缩器几乎不花比特，实测体积降到彩色 30% 左右；只改载荷头里的格式字节不会变小。
+   */
+  function toGrayData(imageData) {
+    var w = imageData.width, h = imageData.height, src = imageData.data;
+    var out = new Uint8ClampedArray(w * h * 4);
+    for (var i = 0; i < w * h; i++) {
+      var o = i * 4;
+      var y = 0.299 * src[o] + 0.587 * src[o + 1] + 0.114 * src[o + 2];
+      var v = y < 0 ? 0 : (y > 255 ? 255 : y);
+      out[o] = v; out[o + 1] = v; out[o + 2] = v; out[o + 3] = src[o + 3];
+    }
+    return new ImageData(out, w, h);
+  }
+
+  /**
+   * 估算某张图编码成 JPEG 后的字节数。
+   * quality / keepColor 必须与真正嵌入时一致，否则预判会与实际结果不符。
+   */
+  function jpegBytesOf(imageData, quality, keepColor) {
+    var q = typeof quality === 'number' ? quality : 0.75;
+    var src = keepColor === false ? toGrayData(imageData) : imageData;
     try {
-      var url = makeCanvasFromImageData(imageData).toDataURL('image/jpeg', 0.75);
+      var url = makeCanvasFromImageData(src).toDataURL('image/jpeg', q);
       var comma = url.indexOf(',');
       if (comma < 0) return 0;
       return Math.floor((url.length - comma - 1) * 3 / 4);
     } catch (e) {
       return 0;
     }
+  }
+
+  // ---------- 画质 vs 容量：三档快捷预设 ----------
+  //
+  // 每一档决定的其实是两件事：**允许把秘密图压到多糊**（质量阶梯）与**允不允许缩小**。
+  //   阶梯的顺序与内核 embedSecret 的自适应逻辑一致：容量富余就往上抬到 0.92，
+  //   吃紧就往下走到下限；下限取 0.45，再低就明显发糊，不如缩小尺寸。
+  var SECRET_MODES = {
+    hd: {
+      ladder: [0.92, 0.85, 0.75],
+      keepColor: true,
+      minScale: 0.4,
+      desc: '高清优先：尽量保留原始尺寸与画质，只在必要时缩小到 40% 以内；载体容量不够时会失败，' +
+        '这时请改用"均衡"或"容量优先"。'
+    },
+    balanced: {
+      ladder: [0.92, 0.85, 0.75, 0.65, 0.55, 0.45],
+      keepColor: true,
+      minScale: 0,
+      desc: '均衡（推荐）：先按 0.75 试，容量富余就自动提高到 0.92，紧张就降到 0.45，' +
+        '实在装不下再逐步缩小尺寸。'
+    },
+    capacity: {
+      ladder: [0.75, 0.65, 0.55, 0.45],
+      keepColor: false,
+      minScale: 0,
+      desc: '容量优先：转灰度（体积实测降到彩色的 66%~93%，容量多 10%~50%）并按较低质量编码，' +
+        '先保证装得下。'
+    }
+  };
+
+  function secretMode() { return $('secretMode').value; }
+  /** 当前生效的秘密图编码策略（灰度勾选优先于预设的颜色设置） */
+  function secretPolicy() {
+    var m = SECRET_MODES[secretMode()] || SECRET_MODES.balanced;
+    var gray = $('secretGray').checked;
+    return {
+      ladder: m.ladder.slice(),
+      keepColor: gray ? false : m.keepColor,
+      minScale: m.minScale,
+      desc: m.desc
+    };
   }
 
   function currentRedundancy() { return $('redundancy').value; }
@@ -353,14 +437,80 @@
   }
 
   /**
-   * 预判"这张秘密图会被缩到多大"。
-   * 这里只是给用户一个提前提示（以及决定"自动"档位选哪种模式），
-   * 真正的缩放决策仍然由嵌入过程自己完成，以它为准。
-   * 每一次候选尺寸的 JPEG 体积会缓存起来（换档位时不必重复编码）。
+   * 预判"这张秘密图会被缩到多大、压到多糊"。
+   * 搜索顺序与内核 embedSecret 一致：先在同一尺寸上试质量阶梯（富余往上、紧张往下），
+   * 都不行才缩小尺寸重来。这里只是提前告诉用户，真正的决策仍以内核为准。
+   * 每次候选（尺寸 × 质量）的 JPEG 体积都会缓存，换档位时不必重复编码。
    */
   function planFor(lowFreq) {
     if (!state.carrier || !state.secret) return null;
+    var pol = secretPolicy();
     var mode = lowFreq ? CONST.MODE_4 : CONST.MODE_6;
+    var factor = CONST.REDUNDANCY[currentRedundancy()];
+    var room = texturedTiles();
+    var head = CONST.SECRET_HEADER_BYTES;
+    var factors = CONST.AUTO_RESIZE_FACTORS;
+    var minSide = CONST.MIN_SECRET_LONG_SIDE;
+    var W = state.secret.width, H = state.secret.height;
+    var ladder = pol.ladder.slice().sort(function (a, b) { return b - a; });   // 由高到低
+    var base = 0.75;
+
+    function bytesAt(scale, quality) {
+      var key = scale + '@' + quality + (pol.keepColor ? 'c' : 'g');
+      if (state.jpegCache[key] !== undefined) return state.jpegCache[key];
+      var longSide = Math.round(Math.max(W, H) * scale);
+      var img = scale === 1 ? state.secret : resizeToLongSide(state.secret, longSide);
+      var b = jpegBytesOf(img, quality, pol.keepColor);
+      state.jpegCache[key] = b;
+      return b;
+    }
+    function fits(bytes) {
+      var parts = Math.ceil((head + bytes) / mode.symbolSize);
+      return Math.ceil(parts * factor) <= room;
+    }
+
+    for (var i = 0; i < factors.length; i++) {
+      var scale = factors[i];
+      var longSide = Math.round(Math.max(W, H) * scale);
+      if (scale < 1 && longSide < minSide) break;
+      if (pol.minScale && scale < pol.minScale) break;      // 高清优先：不缩得太狠
+      var ref = scale === 1 ? state.secret : resizeToLongSide(state.secret, longSide);
+      var b75 = bytesAt(scale, base);
+      if (!b75) return null;
+      var chosen = null;
+      if (fits(b75)) {
+        chosen = { quality: base, bytes: b75 };
+        // 容量富余：逐个往上试，取仍放得下的最高质量
+        for (var h = 0; h < ladder.length; h++) {
+          if (ladder[h] <= chosen.quality) continue;
+          var bh = bytesAt(scale, ladder[h]);
+          if (bh && fits(bh)) chosen = { quality: ladder[h], bytes: bh };
+        }
+      } else {
+        // 容量不足：从高到低试更低的质量
+        for (var l = 0; l < ladder.length; l++) {
+          if (ladder[l] >= base) continue;
+          var bl = bytesAt(scale, ladder[l]);
+          if (bl && fits(bl)) { chosen = { quality: ladder[l], bytes: bl }; break; }
+        }
+      }
+      if (chosen) {
+        return {
+          width: ref.width, height: ref.height, scale: scale,
+          quality: chosen.quality, jpegBytes: chosen.bytes
+        };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 最宽松条件下的尺寸上限（灰度 + 最低质量 + 当前档位）。
+   * 只在"当前设置装不下"时用来告诉用户"上限大概是多少"，属于给建议用的估算。
+   */
+  function maxFitSize() {
+    if (!state.carrier || !state.secret) return null;
+    var mode = CONST.MODE_6;
     var factor = CONST.REDUNDANCY[currentRedundancy()];
     var room = texturedTiles();
     var head = CONST.SECRET_HEADER_BYTES;
@@ -371,16 +521,17 @@
       var scale = factors[i];
       var longSide = Math.round(Math.max(W, H) * scale);
       if (scale < 1 && longSide < minSide) break;
-      var cand = state.jpegCache[scale];
-      if (!cand) {
-        var img = scale === 1 ? state.secret : resizeToLongSide(state.secret, longSide);
-        cand = { width: img.width, height: img.height, bytes: jpegBytesOf(img) };
-        state.jpegCache[scale] = cand;
+      var img = scale === 1 ? state.secret : resizeToLongSide(state.secret, longSide);
+      var key = 'max@' + scale;
+      var b = state.jpegCache[key];
+      if (b === undefined) {
+        b = jpegBytesOf(img, 0.45, false);        // 灰度 + 最低质量
+        state.jpegCache[key] = b;
       }
-      if (!cand.bytes) return null;
-      var parts = Math.ceil((head + cand.bytes) / mode.symbolSize);
+      if (!b) return null;
+      var parts = Math.ceil((head + b) / mode.symbolSize);
       if (Math.ceil(parts * factor) <= room) {
-        return { width: cand.width, height: cand.height, scale: scale, jpegBytes: cand.bytes };
+        return { width: img.width, height: img.height, scale: scale, bytes: b };
       }
     }
     return null;
@@ -429,15 +580,28 @@
       el.textContent = '上传两张图后可开始';
       $('embedBtn').disabled = true;
       state.plan = null;
+      $('fitStatus').textContent = '';
+      $('fitStatus').className = 'status';
       return;
     }
     var r = resolveMode();
     state.lowFreq = r.lowFreq;
     state.plan = r.plan;
+    var pol = secretPolicy();
     if (!r.plan) {
+      // ---- 真的装不下：不说"放不下"就完事，而是给出上限与三条可执行建议 ----
+      var maxFit = maxFitSize();
+      var cap = '这张载体图能承载的秘密图尺寸上限约 ' +
+        (maxFit ? maxFit.width + '×' + maxFit.height + '（灰度 + 最低质量）' : '不足 64 像素');
+      var cur = '当前秘密图 ' + state.secret.width + '×' + state.secret.height + '。';
       el.className = 'ready bad';
-      el.textContent = '这张载体图放不下这张秘密图（载体图太小或太平淡），请换一张更大、纹理更丰富的图。';
-      setStatus('秘密图已经缩到最小仍放不下，无法嵌入。', 'err');
+      el.textContent = cap + '，' + cur;
+      var advice = '建议：① 换用本页的"自动生成载体图"功能；' +
+        '② 更换纹理更丰富的载体图（避免大片天空 / 水面 / 白墙）；' +
+        '③ 开启"灰度模式"（容量多 10%~50%）。';
+      $('fitStatus').className = 'status err';
+      $('fitStatus').textContent = cap + '，' + cur + advice;
+      setStatus('秘密图缩到最小仍放不下，' + advice, 'err');
       $('embedBtn').disabled = true;
       return;
     }
@@ -446,14 +610,23 @@
     // 免得以为"能嵌"就一定能扛住转发过程中的压缩。
     var skipped = skippedTiles();
     var skipNote = skipped > 0 ? '（已避开 ' + skipped + ' 个过于平滑的区域，这些区域单独承载数据时扛不住压缩）' : '';
+    var qNote = '，质量 ' + (r.plan.quality * 100).toFixed(0);
     if (r.plan.scale === 1) {
       el.className = skipped > 0 ? 'ready warn' : 'ready ok';
       el.textContent = '已就绪，点击下方按钮开始' + skipNote;
       setStatus(skipped > 0 ? '已避开 ' + skipped + ' 个过于平滑的区域，秘密图仍按原尺寸嵌入。' : '');
+      $('fitStatus').className = 'status ok';
+      $('fitStatus').textContent = '已就绪：秘密图按原尺寸 ' + r.plan.width + '×' + r.plan.height +
+        ' 嵌入（JPEG 质量 ' + (r.plan.quality * 100).toFixed(0) + '）。';
     } else {
       el.className = 'ready warn';
-      el.textContent = '秘密图偏大，将自动缩小至 ' + r.plan.width + '×' + r.plan.height + skipNote;
+      el.textContent = '秘密图偏大，已自动缩至 ' + r.plan.width + '×' + r.plan.height +
+        '（原 ' + state.secret.width + '×' + state.secret.height + '）以适应载体容量' + skipNote;
       setStatus('嵌入时会自动把秘密图缩小后重试。');
+      $('fitStatus').className = 'status warn';
+      $('fitStatus').textContent = '秘密图偏大，已自动缩至 ' + r.plan.width + '×' + r.plan.height +
+        '（原 ' + state.secret.width + '×' + state.secret.height + '）以适应载体容量' +
+        '(' + qNote.replace('，', '；') + ')。' + (pol.keepColor ? '' : '当前为灰度模式。');
     }
   }
 
@@ -521,21 +694,32 @@
     $('genShuffleBtn').disabled = true;
     $('genUseBtn').disabled = true;
     $('genHint').classList.remove('hidden');
-    $('genHint').textContent = '正在生成…';
+    $('genHint').textContent = '正在生成… 0%';
+    $('genProgressBar').style.width = '0%';
     $('genQuality').textContent = '';
-    // 让浏览器先把"正在生成"画出来，再跑这段同步计算
+    // 让浏览器先把"正在生成"画出来，再开始跑
     setTimeout(function () {
-      try {
-        var size = genSize();
-        genState.seed = useNewSeed || !genState.seed
-          ? ((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0)
-          : genState.seed;
-        var result = window.CarrierGenerator.generate({
-          width: size.width,
-          height: size.height,
-          style: $('genStyle').value,
-          seed: genState.seed
-        });
+      var size = genSize();
+      genState.seed = useNewSeed || !genState.seed
+        ? ((Date.now() ^ (Math.random() * 0xffffffff)) >>> 0)
+        : genState.seed;
+      // 分片异步生成：每约 12ms 让出一次主线程，并通过 onProgress 汇报进度，
+      // 手机/大图上界面不会假死（≤1024² 时也用同一条路径，逻辑只有一条）。
+      window.CarrierGenerator.generateAsync({
+        width: size.width,
+        height: size.height,
+        style: $('genStyle').value,
+        seed: genState.seed,
+        onProgress: function (phase, done, total) {
+          if (phase === 'retry') {
+            $('genHint').textContent = '正在自动微调纹理…（第 ' + done + ' 次）';
+            return;
+          }
+          var p = total > 0 ? Math.round(done / total * 100) : 0;
+          $('genProgressBar').style.width = p + '%';
+          $('genHint').textContent = '正在生成… ' + p + '%';
+        }
+      }).then(function (result) {
         genState.result = result;
         genState.styleName = $('genStyle').options[$('genStyle').selectedIndex].text.split(' —— ')[0];
         drawGenPreview(result.imageData);
@@ -544,13 +728,14 @@
         $('genQuality').className = 'status ' + (weak ? 'err' : 'ok');
         $('genQuality').textContent = describeGenQuality(result);
         $('genUseBtn').disabled = false;
-      } catch (err) {
+        $('genProgressBar').style.width = '100%';
+      }).catch(function (err) {
         $('genQuality').className = 'status err';
         $('genQuality').textContent = '生成失败：' + err.message;
-      } finally {
+      }).then(function () {
         genState.busy = false;
         $('genShuffleBtn').disabled = false;
-      }
+      });
     }, 20);
   }
 
@@ -613,7 +798,16 @@
       $('secretHint').classList.add('hidden');
       $('secretMeta').textContent = f.name + ' ｜ ' + data.width + ' × ' + data.height + ' 像素';
       $('secretNote').textContent = '秘密图会自动压缩；如果载体图装不下，会自动缩小后再嵌入。';
+      // 上传后**立即**评估容量并给出"已就绪 / 已自动缩小 / 装不下+三条建议"，
+      // 而不是等用户点了"开始嵌入"再弹一个红字报错（安卓用户抱怨的正是这个）。
       refreshReady();
+      var plan = state.plan;
+      if (plan && plan.scale === 1) {
+        setStatus('已就绪：秘密图按原尺寸嵌入（JPEG 质量 ' + Math.round(plan.quality * 100) + '）。', 'ok');
+      } else if (plan) {
+        setStatus('秘密图偏大，已自动缩至 ' + plan.width + '×' + plan.height + '（原 ' +
+          data.width + '×' + data.height + '）以适应载体容量。', 'warn');
+      }
     }).catch(function (err) {
       alert('秘密图载入失败：' + err.message);
     });
@@ -628,7 +822,47 @@
     refreshAdvancedDesc();
     refreshReady();
   });
+  // 画质/容量档位与灰度开关都会改变"能装多少"，因此要立刻重新评估（不是等点开始嵌入）
+  $('secretMode').addEventListener('change', function () {
+    if (secretMode() === 'capacity') $('secretGray').checked = true;
+    refreshSecretModeDesc();
+    state.jpegCache = {};
+    refreshReady();
+  });
+  $('secretGray').addEventListener('change', function () {
+    state.jpegCache = {};
+    refreshReady();
+  });
+
+  /** 秘密图区下方的档位说明 */
+  function refreshSecretModeDesc() {
+    $('secretModeDesc').textContent = secretPolicy().desc +
+      ($('secretGray').checked && secretMode() !== 'capacity' ? '（当前已勾选灰度模式）' : '');
+  }
+
+  // ---------- 手机端默认用"紧凑"档 ----------
+  //
+  // 手机相册里的照片往往大片天空/水面，安全块少；屏幕上 100% 显示时用户也很难判断
+  // "为什么装不下"。所以在窄屏（< 768px）上默认给容量最大的紧凑档（容量 +60%），
+  // 用户仍可在高级设置里改回标准档。检测放在初始化阶段，只改默认值，不改用户手动选过的值。
+  (function mobileDefaultTier() {
+    var sw = (typeof window.screen !== 'undefined' && window.screen.width) || 0;
+    var vw = window.innerWidth || 0;
+    var narrow = (vw && vw < 768) || (!vw && sw && sw < 768);
+    if (!narrow) return;
+    var sel = $('redundancy');
+    if (sel && sel.value === 'standard') {
+      sel.value = 'compact';
+      state.mobileTierApplied = true;
+    }
+  })();
+
   refreshAdvancedDesc();
+  refreshSecretModeDesc();
+  if (state.mobileTierApplied) {
+    $('advancedDesc').textContent = '已按手机端容量优先预设为"紧凑"档（容量比标准档多约六成），' +
+      '可在上面改回标准档。' + $('advancedDesc').textContent;
+  }
 
   // ---------- 进度 ----------
   function onProgress(phase, cur, total) {
@@ -650,11 +884,15 @@
     setTimeout(function () {
       try {
         var t0 = Date.now();
+        var pol = secretPolicy();
         var result = window.StegoCore.embedSecret(state.carrier, state.secret, {
           redundancy: currentRedundancy(),
           lowFrequencyMode: state.lowFreq,
-          secretJpegQuality: 0.75,
-          secretKeepColor: true,
+          // 自适应质量：容量富余往上抬到 0.92，紧张往下走到 0.45；
+          // 灰度模式连像素一起转（只改格式字节不会让文件变小）
+          adaptiveQuality: true,
+          qualityLadder: pol.ladder,
+          secretKeepColor: pol.keepColor,
           tileStrategy: 'spread',
           onProgress: onProgress
         });
