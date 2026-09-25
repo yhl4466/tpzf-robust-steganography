@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%234c8dff'/><path d='M16 7a5 5 0 0 0-5 5v3h-1.5v10h13V15H21v-3a5 5 0 0 0-5-5zm0 3a2 2 0 0 1 2 2v3h-4v-3a2 2 0 0 1 2-2z' fill='%23fff'/></svg>">
+<title>提取 · 图片抗干扰隐写工具</title>
+<meta name="description" content="上传一张藏着秘密图的图片，在浏览器本地还原出里面的秘密图，不上传任何服务器。">
+<style>
+  :root {
+    --bg: #0f1319; --panel: #171d26; --line: #2a3341; --text: #e6e9ef;
+    --muted: #97a3b6; --accent: #4c8dff; --green: #2ecc71; --red: #ff5470; --warn: #ffb020;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.75 "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  }
+  header.nav { position: sticky; top: 0; z-index: 10; background: rgba(15,19,25,.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+  .nav-inner { max-width: 860px; margin: 0 auto; padding: 12px 18px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .brand { font-weight: 700; letter-spacing: .5px; }
+  .brand span { color: var(--accent); }
+  nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 8px; font-size: 14px; }
+  nav a:hover { color: var(--text); background: #202836; }
+  nav a.active { color: #fff; background: var(--accent); }
+  main { max-width: 860px; margin: 0 auto; padding: 26px 18px 40px; }
+  h1 { font-size: 24px; margin: 4px 0 8px; line-height: 1.45; }
+  p.lead { color: var(--muted); margin: 0 0 20px; }
+  h2 { font-size: 17px; margin: 0 0 14px; }
+  h3 { font-size: 15px; margin: 0 0 8px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+  .row > .grow { flex: 1 1 260px; min-width: 240px; }
+  label.pick {
+    display: block; border: 1px dashed var(--line); border-radius: 10px;
+    padding: 16px; text-align: center; cursor: pointer; margin-bottom: 8px;
+  }
+  label.pick:hover { border-color: var(--accent); }
+  label.pick b { display: block; font-size: 15.5px; margin-bottom: 4px; }
+  label.pick span { color: var(--muted); font-size: 13px; }
+  input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+  canvas.thumb { max-width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #0a0d12; display: block; }
+  .hint { padding: 18px 12px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; font-size: 13px; }
+  .hidden { display: none !important; }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 8px; word-break: break-all; }
+  button {
+    padding: 11px 20px; border-radius: 9px; border: 1px solid var(--line);
+    background: #232a36; color: var(--text); cursor: pointer; font-size: 15px;
+  }
+  button:hover:not(:disabled) { background: #2c3442; border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .bigbtn {
+    width: 100%; padding: 18px; font-size: 18px; font-weight: 600;
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .bigbtn:hover:not(:disabled) { background: #3d7cf0; }
+  .progress { height: 10px; background: #0b0f15; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin-top: 14px; }
+  .progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .05s linear; }
+  .status { font-size: 13.5px; min-height: 20px; margin-top: 10px; color: var(--muted); }
+  .status.err { color: var(--red); }
+  .status.ok { color: var(--green); }
+  .ready { border-radius: 10px; padding: 13px 16px; font-size: 15px; margin-top: 14px; border: 1px solid var(--line); background: #0b0f15; color: var(--muted); }
+  .ready.ok { border-color: var(--green); color: var(--green); }
+  .banner { border-radius: 10px; padding: 14px 16px; font-size: 15.5px; margin-bottom: 14px; line-height: 1.7; }
+  .banner.ok { background: rgba(46,204,113,.14); border: 1px solid var(--green); color: var(--green); }
+  .banner.no { background: rgba(255,84,112,.14); border: 1px solid var(--red); color: var(--red); }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; color: var(--muted); font-size: 13px; margin-top: 10px; }
+  .dot { display: inline-block; width: 12px; height: 12px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+  .dot.g { background: #00ff00; }
+  .dot.r { background: #ff0000; }
+  .dot.x { background: #808080; }
+  .diag { font-size: 14px; color: var(--muted); margin: 0; padding-left: 20px; }
+  .diag li { margin: 5px 0; }
+  .diag b { color: var(--text); }
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .tip { color: var(--muted); font-size: 14px; margin: 10px 0 0; }
+  footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 13.5px; margin-top: 26px; }
+  .footer-inner { max-width: 860px; margin: 0 auto; padding: 18px; display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+  .footer-inner a { color: var(--accent); text-decoration: none; }
+  .footer-inner a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <div class="brand">图片抗干扰<span>隐写</span></div>
+    <nav>
+      <a href="index.html">首页</a>
+      <a href="embed.html">嵌入</a>
+      <a href="extract.html" class="active">提取</a>
+      <a href="tech.html">技术原理</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <h1>上传一张被隐写的图片，还原其中的秘密图</h1>
+  <p class="lead">请上传别人发给你的隐写图（记得让对方用"原图/文件"方式发送，收到时也要按原图保存）。转发过、压缩过的图也可以试试，程序会自动尽力修复。</p>
+
+  <!-- 1. 选图 -->
+  <div class="panel">
+    <h2>第 1 步：选择图片</h2>
+    <label class="pick" for="stegoFile">
+      <b>选择要还原的图片</b>
+      <span>就是那张看起来普通、其实藏着秘密图的图片；请用收到的原始文件，不要用截图</span>
+    </label>
+    <input id="stegoFile" type="file" accept="image/*">
+    <div class="hint" id="inputHint">尚未选择</div>
+    <canvas id="inputThumb" class="thumb hidden"></canvas>
+    <div class="meta" id="inputMeta"></div>
+    <div class="ready" id="inputReady">选择一张图片后即可开始</div>
+  </div>
+
+  <!-- 2. 提取 -->
+  <div class="panel">
+    <h2>第 2 步：开始提取</h2>
+    <button id="extractBtn" class="bigbtn" disabled>开始提取</button>
+    <div class="progress"><i id="progressBar"></i></div>
+    <div class="status" id="statusText"></div>
+  </div>
+
+  <!-- 3. 结果 -->
+  <div class="panel">
+    <h2>第 3 步：查看结果</h2>
+    <div id="resultBanner" class="banner no">还没有开始提取</div>
+    <div class="row">
+      <div class="grow">
+        <h3>还原出来的秘密图</h3>
+        <div class="hint" id="secretHint">还没有结果</div>
+        <canvas id="secretThumb" class="thumb hidden"></canvas>
+      </div>
+      <div class="grow">
+        <p class="tip" id="elapsedText"></p>
+        <p style="margin-top:14px;"><button id="downloadSecretBtn" disabled>下载秘密图</button></p>
+      </div>
+    </div>
+  </div>
+
+  <!-- 诊断详情（默认收起） -->
+  <details id="diagPanel">
+    <summary>查看诊断详情</summary>
+    <p class="tip">下面这张图把图片分成了许多小方块：绿色代表这里的数据被成功读出，红色代表读取失败，灰色是边缘上不足一整块的区域。</p>
+    <div class="hint" id="maskHint">还没有结果</div>
+    <canvas id="maskThumb" class="thumb hidden"></canvas>
+    <div class="legend">
+      <span><i class="dot g"></i>绿：成功读出</span>
+      <span><i class="dot r"></i>红：读取失败</span>
+      <span><i class="dot x"></i>灰：边缘区域</span>
+    </div>
+    <ul class="diag">
+      <li>常规提取：<b id="diagNormal">-</b></li>
+      <li>网格定位（抗裁切）：<b id="diagPhase">-</b></li>
+      <li>尺寸校准（抗缩放）：<b id="diagScale">-</b></li>
+      <li>最终读出的方块：<b id="diagTiles">-</b></li>
+      <li>还原需要的数据块数：<b id="diagBlocks">-</b></li>
+      <li>实际使用的还原方式：<b id="diagPath">-</b></li>
+    </ul>
+  </details>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <a href="index.html#faq">使用帮助 →</a>
+    <a href="tech.html">了解技术原理 →</a>
+    <span>需要对方用"原图/文件"方式发送才能保证还原；被平台重新压缩（微信/QQ 普通发送）后通常无法恢复。</span>
+  </div>
+</footer>
+
+<script src="js/image-utils.js"></script>
+<script src="js/dct-stego.js"></script>
+<script src="js/packet.js"></script>
+<script src="js/raptorq.js"></script>
+<script src="js/geo-calibration.js"></script>
+<script src="js/stego-core.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  var state = {
+    input: null,        // 隐写图 ImageData
+    secretJpeg: null    // 提取出的秘密图数据（JPEG 字节流）
+  };
+
+  function setStatus(msg, kind) {
+    var el = $('statusText');
+    el.textContent = msg || '';
+    el.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function drawThumb(canvas, imageData) {
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+    var ctx = canvas.getContext('2d');
+    if (typeof ctx.putImageData === 'function') { ctx.putImageData(imageData, 0, 0); return; }
+    var img = ctx.createImageData(imageData.width, imageData.height);
+    img.data.set(imageData.data);
+    ctx.putImageData(img, 0, 0);
+  }
+
+  var PATH_LABEL = {
+    normal: '直接读取（图片完好）',
+    phase: '网格重定位（图片被裁剪过）',
+    scale: '尺寸还原（图片被缩放过）',
+    failed: '未成功'
+  };
+
+  // 诊断详情：把 StegoCore.extractSecret 返回的 attempts 逐条翻译成人话。
+  //
+  // 为什么必须两种模式**分别**报数：嵌入端可能用 6 对模式、也可能用 4 对低频模式，
+  //   提取端只能两种都试。而"用错了模式"永远读出 0 块 —— 旧版界面只显示最后尝试
+  //   那个模式的结果，于是 6 对模式嵌的图在失败时恒显示 "0/N 全红"，看上去像整幅图
+  //   都毁了，与真实损坏程度完全无关。现在两条都列出来，并标注实际生效的那条路径。
+  var MODE_LABEL = { mode6: '6 对模式', mode4: '4 对低频模式' };
+
+  function pctText(x) {
+    return (Math.round((x || 0) * 100)) + '%';
+  }
+
+  /**
+   * @returns {{normal:string, phase:string, scale:string, brief:string}}
+   *   normal/phase/scale 是诊断面板里的三行文字；brief 是状态栏用的一句话摘要。
+   */
+  function describeAttempts(result) {
+    var at = result.attempts || {};
+    var n6 = at.normal6 || {}, n4 = at.normal4 || {};
+    var need = result.K_effective || 0;
+    var tiles6 = n6.validTiles || 0, tiles4 = n4.validTiles || 0;
+    var best = Math.max(tiles6, tiles4);
+
+    var normal = '6 对模式读出 ' + tiles6 + ' 块' +
+      (n4.tried ? '；4 对低频模式读出 ' + tiles4 + ' 块' : '（已成功，未再试 4 对低频模式）') +
+      '；需要 ' + need + ' 块';
+    var brief = '常规提取 ' + best + '/' + need + ' 块';
+
+    var ph = at.phase || {};
+    var phase;
+    if (!ph.tried) {
+      phase = '未进行（常规提取已经成功）';
+    } else if (ph.bestPhase) {
+      phase = '最佳起始位置偏移 (' + ph.bestPhase[0] + ', ' + ph.bestPhase[1] + ') 像素，' +
+        '方块通过率 ' + pctText(ph.bestRate) +
+        (ph.validTiles > 0 ? '，读出 ' + ph.validTiles + ' 块' : '，仍不足');
+      brief += '，相位搜索 ' + pctText(ph.bestRate);
+    } else {
+      phase = '已试遍所有起始位置，没有更对齐的网格（最高通过率 ' + pctText(ph.bestRate) + '）';
+      brief += '，相位搜索 ' + pctText(ph.bestRate);
+    }
+
+    var sc = at.scale || {};
+    var scale;
+    if (!sc.tried) {
+      scale = '未进行（前面某条路径已经成功）';
+    } else if (!sc.detectedSize) {
+      scale = '没有检测到尺寸标尺';
+      brief += '，未检测到标尺';
+    } else {
+      scale = '检测到原图尺寸 ' + sc.detectedSize.w + '×' + sc.detectedSize.h +
+        '（置信度 ' + sc.confidence + '，幅度 α=' + (sc.alpha || 0).toFixed(2) +
+        (sc.z > 0 ? '，峰背比 z=' + sc.z.toFixed(2) : '') + '）' +
+        (sc.used ? '，已按它还原尺寸' : '，置信度不足，未按它重采样');
+      brief += '，尺寸校准 ' + sc.detectedSize.w + '×' + sc.detectedSize.h + ' ' + sc.confidence;
+    }
+
+    return { normal: normal, phase: phase, scale: scale, brief: brief };
+  }
+
+  // ---------- 上传 ----------
+  $('stegoFile').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    window.ImageUtils.loadImage(f).then(function (img) {
+      var data = window.ImageUtils.getImageData(img);
+      state.input = data;
+      drawThumb($('inputThumb'), data);
+      $('inputThumb').classList.remove('hidden');
+      $('inputHint').classList.add('hidden');
+      $('inputMeta').textContent = f.name + ' ｜ ' + data.width + ' × ' + data.height + ' 像素';
+      $('inputReady').className = 'ready ok';
+      $('inputReady').textContent = '已就绪，点击下方按钮开始';
+      $('extractBtn').disabled = false;
+      setStatus('');
+    }).catch(function (err) {
+      alert('图片载入失败：' + err.message);
+    });
+  });
+
+  // ---------- 进度 ----------
+  function onProgress(phase, cur, total) {
+    var p = total > 0 ? Math.round(cur / total * 100) : 0;
+    $('progressBar').style.width = p + '%';
+    var label = phase === 'extract' ? '检查图片'
+      : (phase === 'decode' ? '还原数据'
+        : (phase === '标定中' ? '校正位置' : (phase === '重同步' ? '校正尺寸' : '处理中')));
+    setStatus(label + '… ' + p + '%');
+  }
+
+  // ---------- 提取 ----------
+  $('extractBtn').addEventListener('click', function () {
+    if (!state.input) return;
+    $('extractBtn').disabled = true;
+    $('progressBar').style.width = '0%';
+    setStatus('正在处理…');
+
+    setTimeout(function () {
+      try {
+        var t0 = Date.now();
+        var result = window.StegoCore.extractSecret(state.input, { onProgress: onProgress });
+        var dt = Date.now() - t0;
+        var seconds = (dt / 1000).toFixed(1);
+
+        // 诊断详情（放在折叠面板里）
+        var diag = describeAttempts(result);
+        drawThumb($('maskThumb'), result.debugMask);
+        $('maskThumb').classList.remove('hidden');
+        $('maskHint').classList.add('hidden');
+        $('diagNormal').textContent = diag.normal;
+        $('diagPhase').textContent = diag.phase;
+        $('diagScale').textContent = diag.scale;
+        $('diagTiles').textContent = result.validTiles + ' / ' + result.totalTiles +
+          '（按' + (MODE_LABEL[result.mode] || '未识别模式') + '统计）';
+        $('diagBlocks').textContent = result.K_effective;
+        $('diagPath').textContent = PATH_LABEL[result.recoveryPath] || result.recoveryPath;
+
+        var banner = $('resultBanner');
+        if (result.success && result.secretJpegBytes) {
+          state.secretJpeg = result.secretJpegBytes;
+          $('downloadSecretBtn').disabled = false;
+          banner.className = 'banner ok';
+          banner.textContent = '成功了！秘密图已经还原出来，点右边按钮保存。';
+          $('elapsedText').textContent = '用时 ' + seconds + ' 秒。';
+          if (result.decodeSupported && typeof window.StegoCore.decodeSecretImage === 'function') {
+            window.StegoCore.decodeSecretImage(result.secretJpegBytes).then(function (imgData) {
+              drawThumb($('secretThumb'), imgData);
+              $('secretThumb').classList.remove('hidden');
+              $('secretHint').classList.add('hidden');
+            }).catch(function (e) {
+              // 预览失败 ≠ 还原失败：字节流已经完整拿到（下载按钮保持可用），
+              // 这里只解释"预览这一步不可用"，并把用户引导到下载。
+              $('secretThumb').classList.add('hidden');
+              $('secretHint').classList.remove('hidden');
+              $('secretHint').textContent = '数据已还原，但预览不可用，请直接下载（文件名 secret.jpg）。' +
+                (e && e.message ? '（原因：' + e.message + '）' : '');
+              $('downloadSecretBtn').disabled = false;
+              setStatus('秘密图已还原，预览不可用，请点"下载秘密图"保存。', 'ok');
+            });
+          } else {
+            $('secretHint').classList.remove('hidden');
+            $('secretHint').textContent = '当前浏览器不支持预览，但仍可下载还原出的图片。';
+            $('downloadSecretBtn').disabled = false;
+          }
+          setStatus('完成，用时 ' + seconds + ' 秒（' + diag.brief + '）。', 'ok');
+        } else {
+          state.secretJpeg = null;
+          $('secretThumb').classList.add('hidden');
+          $('secretHint').classList.remove('hidden');
+          $('secretHint').textContent = '没有还原出秘密图。';
+          $('downloadSecretBtn').disabled = true;
+          $('elapsedText').textContent = '用时 ' + seconds + ' 秒。';
+          banner.className = 'banner no';
+          banner.textContent = '未能还原秘密图。可能原因：图片经过平台压缩（例如微信/QQ 的普通发送）、被裁剪或损坏过多、或者这本来就不是一张隐写图。';
+          setStatus('没能还原出秘密图（' + diag.brief + '）。若图片经过平台压缩（如微信普通发送），可能无法还原；' +
+            '展开下面的诊断详情可以看到每条路径的读数。', 'err');
+        }
+      } catch (err) {
+        setStatus('处理出错：' + err.message, 'err');
+        alert(err.message);
+      } finally {
+        $('extractBtn').disabled = false;
+      }
+    }, 30);
+  });
+
+  // ---------- 下载 ----------
+  $('downloadSecretBtn').addEventListener('click', function () {
+    if (!state.secretJpeg) return;
+    // 秘密图数据本身就是 JPEG，原样导出，避免二次压缩
+    try {
+      var blob = new Blob([state.secretJpeg], { type: 'image/jpeg' });
+      window.ImageUtils.downloadBlob(blob, 'secret.jpg');
+      setStatus('已保存 secret.jpg（' + (blob.size / 1024).toFixed(1) + ' KB）。', 'ok');
+    } catch (err) {
+      alert('保存失败：' + err.message);
+    }
+  });
+})();
+</script>
+</body>
+</html>

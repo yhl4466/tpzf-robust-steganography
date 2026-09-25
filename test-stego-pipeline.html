@@ -1,0 +1,464 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%234c8dff'/><path d='M16 7a5 5 0 0 0-5 5v3h-1.5v10h13V15H21v-3a5 5 0 0 0-5-5zm0 3a2 2 0 0 1 2 2v3h-4v-3a2 2 0 0 1 2-2z' fill='%23fff'/></svg>">
+<title>端到端隐写流水线 —— 嵌入 / 提取</title>
+<!--
+  依赖顺序不能改（stego-core.js 依赖前四个全局命名空间）：
+    image-utils.js → dct-stego.js → packet.js → raptorq.js → stego-core.js
+  全部普通 script 标签，无 ES Module、无构建、无外部依赖，file:// 双击即可运行。
+-->
+<style>
+  :root {
+    --bg: #12151c; --panel: #1b2029; --line: #2c3442; --text: #e6e9ef;
+    --muted: #98a2b3; --green: #00e676; --red: #ff4d6a; --accent: #4c8dff;
+    --warn: #ffb020;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 22px; background: var(--bg); color: var(--text);
+    font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  h2 { font-size: 16px; margin: 0 0 12px; color: #cfd6e4; }
+  h3 { font-size: 13px; margin: 0 0 6px; color: var(--muted); font-weight: 600; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 16px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 16px; margin-bottom: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  .row + .row { margin-top: 12px; }
+  label { color: var(--muted); }
+  input[type=file] { color: var(--muted); max-width: 260px; }
+  button {
+    padding: 8px 16px; border-radius: 8px; border: 1px solid var(--line);
+    background: #232a36; color: var(--text); cursor: pointer; font-size: 14px;
+  }
+  button:hover:not(:disabled) { background: #2c3442; border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { background: #3d7cf0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+  canvas, img.preview { max-width: 100%; display: block; border-radius: 6px; border: 1px solid var(--line); background: #0a0d12; }
+  .hint { padding: 22px 12px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; font-size: 13px; }
+  .hidden { display: none !important; }
+  .kv { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .kv > div { background: #0f1319; border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+  .kv .k { color: var(--muted); font-size: 12px; }
+  .kv .v { font-variant-numeric: tabular-nums; font-size: 15px; margin-top: 2px; }
+  .status { font-size: 13px; min-height: 20px; }
+  .status.err { color: var(--red); }
+  .status.ok { color: var(--green); }
+  .status.warn { color: var(--warn); }
+  .progress { height: 8px; background: #0f1319; border: 1px solid var(--line); border-radius: 5px; overflow: hidden; margin-top: 10px; }
+  .progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .05s linear; }
+  .capbox { background: #0f1319; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; font-size: 13px; }
+  .capbox.bad { border-color: var(--red); }
+  .capbox.good { border-color: var(--green); }
+  code { background: #0f1319; padding: 1px 5px; border-radius: 4px; color: #9fd0ff; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 8px; }
+</style>
+</head>
+<body>
+
+<h1>端到端隐写流水线</h1>
+<div class="sub">
+  载体图 → 纹理 Tile 选择 → RaptorQ(RS) 纠删编码 → 每个 64×64 Tile 嵌入 192 bit（24 字节）→ 隐写图；
+  提取端逐 Tile 读回、CRC 校验、K 多数表决、纠删解码还原秘密图。
+</div>
+
+<!-- ======================= 嵌入区 ======================= -->
+<div class="panel" id="embedSection">
+  <h2>① 嵌入区</h2>
+
+  <div class="row">
+    <label for="carrierFile">载体图（建议≥512×512、纹理丰富）：</label>
+    <input id="carrierFile" type="file" accept="image/*">
+    <label for="secretFile">秘密图：</label>
+    <input id="secretFile" type="file" accept="image/*">
+  </div>
+
+  <div class="row">
+    <div class="capbox" id="capacityBox" style="flex:1 1 320px;">
+      <span id="capacityText">尚未选择图片 —— 请先上传载体图与秘密图，这里会显示可用容量 / 需要容量。</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <button id="embedBtn" class="primary" disabled>开始嵌入</button>
+    <button id="downloadStegoBtn" disabled>下载隐写图 PNG</button>
+    <button id="useForExtractBtn" disabled>→ 送到提取区</button>
+  </div>
+  <div class="progress" id="embedProgressWrap"><i id="embedProgressBar"></i></div>
+  <div class="status" id="embedStatus"></div>
+
+  <div class="row" style="margin-top:14px;">
+    <div style="flex:1 1 220px;">
+      <h3>载体图</h3>
+      <div class="hint" id="carrierHint">尚无载体图</div>
+      <canvas id="carrierPreview" class="hidden"></canvas>
+    </div>
+    <div style="flex:1 1 220px;">
+      <h3>秘密图</h3>
+      <div class="hint" id="secretHint">尚无秘密图</div>
+      <canvas id="secretPreview" class="hidden"></canvas>
+    </div>
+    <div style="flex:1 1 220px;">
+      <h3>隐写图（输出）</h3>
+      <div class="hint" id="stegoHint">尚未生成</div>
+      <canvas id="stegoPreview" class="hidden"></canvas>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:12px;">
+    <div style="flex:1 1 100%;">
+      <h3>嵌入统计</h3>
+      <div class="kv" id="embedStats">
+        <div><div class="k">K（源分片数）</div><div class="v" id="sK">-</div></div>
+        <div><div class="k">N = 2K（符号数）</div><div class="v" id="sN">-</div></div>
+        <div><div class="k">symbolSize</div><div class="v" id="sSym">-</div></div>
+        <div><div class="k">纹理 Tile 数</div><div class="v" id="sTextured">-</div></div>
+        <div><div class="k">实际使用 Tile</div><div class="v" id="sUsed">-</div></div>
+        <div><div class="k">秘密图像素</div><div class="v" id="sSecret">-</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ======================= 提取区 ======================= -->
+<div class="panel" id="extractSection">
+  <h2>② 提取区</h2>
+
+  <div class="row">
+    <label for="stegoFile">隐写图：</label>
+    <input id="stegoFile" type="file" accept="image/*">
+    <button id="extractBtn" class="primary" disabled>开始提取</button>
+    <button id="downloadSecretBtn" disabled>下载秘密图 PNG</button>
+  </div>
+  <div class="progress" id="extractProgressWrap"><i id="extractProgressBar"></i></div>
+  <div class="status" id="extractStatus"></div>
+
+  <div class="row" style="margin-top:14px;">
+    <div style="flex:1 1 220px;">
+      <h3>隐写图输入</h3>
+      <div class="hint" id="stegoInputHint">尚未选择隐写图（也可用嵌入区的"→ 送到提取区"）</div>
+      <canvas id="stegoInputPreview" class="hidden"></canvas>
+    </div>
+    <div style="flex:1 1 220px;">
+      <h3>提取出的秘密图</h3>
+      <div class="hint" id="extractedHint">尚未提取</div>
+      <canvas id="extractedPreview" class="hidden"></canvas>
+    </div>
+    <div style="flex:1 1 220px;">
+      <h3>debugMask（绿=CRC通过 红=失败 灰=边界）</h3>
+      <div class="hint" id="maskHint">尚未提取</div>
+      <canvas id="maskPreview" class="hidden"></canvas>
+    </div>
+  </div>
+
+  <div class="row" style="margin-top:12px;">
+    <div style="flex:1 1 100%;">
+      <h3>提取结果</h3>
+      <div class="kv">
+        <div><div class="k">是否成功</div><div class="v" id="xSuccess">-</div></div>
+        <div><div class="k">有效 Tile / 对齐 Tile</div><div class="v" id="xTiles">-</div></div>
+        <div><div class="k">K_effective</div><div class="v" id="xK">-</div></div>
+        <div><div class="k">秘密图尺寸</div><div class="v" id="xSize">-</div></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="note">
+    进度回调（onProgress）是同步触发的：大图嵌入/提取期间浏览器主线程被占用，进度条可能只在结束时统一重绘，属正常现象。
+  </div>
+</div>
+
+<script src="js/image-utils.js"></script>
+<script src="js/dct-stego.js"></script>
+<script src="js/packet.js"></script>
+<script src="js/raptorq.js"></script>
+<script src="js/geo-calibration.js"></script>
+<script src="js/stego-core.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  var state = {
+    carrierImageData: null,
+    secretImageData: null,
+    stegoImageData: null,       // 嵌入输出
+    extractInput: null,         // 提取区当前输入 ImageData
+    lastSecret: null            // 最近一次成功提取的秘密图（供下载按钮使用）
+  };
+
+  // ---------- 通用 UI ----------
+  function setStatus(el, msg, kind) {
+    el.textContent = msg || '';
+    el.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function drawToCanvas(canvas, imageData) {
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+    var ctx = canvas.getContext('2d');
+    if (typeof ctx.putImageData === 'function') {
+      ctx.putImageData(imageData, 0, 0);
+      return;
+    }
+    // 兜底：createImageData 不可用时逐像素写入（极少数环境）
+    var img = ctx.createImageData(imageData.width, imageData.height);
+    img.data.set(imageData.data);
+    ctx.putImageData(img, 0, 0);
+  }
+
+  function show(canvas, hint) {
+    canvas.classList.remove('hidden');
+    hint.classList.add('hidden');
+  }
+
+  function makeProgress(bar, statusEl) {
+    var labels = { encode: 'RaptorQ 编码', embed: 'DCT 嵌入', extract: '扫描 Tile', decode: '纠删解码' };
+    return function (phase, cur, total) {
+      var pct = total > 0 ? Math.round((cur / total) * 100) : 0;
+      bar.style.width = pct + '%';
+      setStatus(statusEl, (labels[phase] || phase) + '：' + cur + ' / ' + total + '（' + pct + '%）');
+    };
+  }
+
+  function loadImageDataFromFile(file) {
+    return window.ImageUtils.loadImage(file).then(function (img) {
+      return window.ImageUtils.getImageData(img);
+    });
+  }
+
+  function downloadImageData(imageData, filename) {
+    var canvas = document.createElement('canvas');
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+    canvas.getContext('2d').putImageData(imageData, 0, 0);
+    return window.ImageUtils.canvasToBlob(canvas, 'image/png').then(function (blob) {
+      window.ImageUtils.downloadBlob(blob, filename);
+      return blob;
+    });
+  }
+
+  // ---------- 嵌入区 ----------
+  var carrierFile = $('carrierFile'), secretFile = $('secretFile');
+  var embedBtn = $('embedBtn');
+  var embedBar = $('embedProgressBar'), embedStatus = $('embedStatus');
+  var capacityBox = $('capacityBox'), capacityText = $('capacityText');
+
+  function refreshCapacity() {
+    if (!state.carrierImageData || !state.secretImageData) {
+      capacityText.textContent = '尚未选择图片 —— 请先上传载体图与秘密图，这里会显示可用容量 / 需要容量。';
+      capacityBox.className = 'capbox';
+      embedBtn.disabled = true;
+      return;
+    }
+    var needPixels = state.secretImageData.width * state.secretImageData.height;
+    var cap = window.StegoCore.analyzeCapacity(state.carrierImageData, needPixels);
+    var need = cap.N;
+    var ok = cap.fits;
+    capacityBox.className = 'capbox ' + (ok ? 'good' : 'bad');
+    capacityText.innerHTML =
+      '载体：' + state.carrierImageData.width + '×' + state.carrierImageData.height +
+      '（对齐 Tile <code>' + cap.alignedTiles + '</code>，纹理 Tile <code>' + cap.texturedTiles + '</code>）｜ ' +
+      '秘密图：<code>' + state.secretImageData.width + '×' + state.secretImageData.height + '</code> 像素 ｜ ' +
+      '需要 <code>' + need + '</code> 个 Tile（K=' + cap.K + ', N=' + need + '）｜ ' +
+      '本载体最多可装 <code>' + cap.maxSecretBytes + '</code> 像素 ｜ ' +
+      (ok ? '<b style="color:#00e676">容量充足</b>' : '<b style="color:#ff4d6a">容量不足</b>');
+    embedBtn.disabled = !ok;
+    if (!ok) setStatus(embedStatus, '容量不足：需要 ' + need + ' 个纹理 Tile，实际只有 ' + cap.texturedTiles + ' 个。', 'err');
+    else setStatus(embedStatus, '');
+  }
+
+  carrierFile.addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    setStatus(embedStatus, '正在读取载体图…');
+    loadImageDataFromFile(f).then(function (imgData) {
+      state.carrierImageData = imgData;
+      drawToCanvas($('carrierPreview'), imgData);
+      show($('carrierPreview'), $('carrierHint'));
+      setStatus(embedStatus, '载体图已载入：' + imgData.width + '×' + imgData.height, 'ok');
+      refreshCapacity();
+    }).catch(function (err) {
+      setStatus(embedStatus, '载体图载入失败：' + err.message, 'err');
+    });
+  });
+
+  secretFile.addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    setStatus(embedStatus, '正在读取秘密图…');
+    loadImageDataFromFile(f).then(function (imgData) {
+      state.secretImageData = imgData;
+      drawToCanvas($('secretPreview'), window.StegoCore.toGrayscale(imgData));
+      show($('secretPreview'), $('secretHint'));
+      setStatus(embedStatus, '秘密图已载入：' + imgData.width + '×' + imgData.height, 'ok');
+      refreshCapacity();
+    }).catch(function (err) {
+      setStatus(embedStatus, '秘密图载入失败：' + err.message, 'err');
+    });
+  });
+
+  embedBtn.addEventListener('click', function () {
+    if (!state.carrierImageData || !state.secretImageData) return;
+    embedBtn.disabled = true;
+    setStatus(embedStatus, '开始嵌入…（大图请耐心等待）');
+    embedBar.style.width = '0%';
+    // 让浏览器先把上面的按钮状态/进度条画出来，再进入同步重活
+    setTimeout(function () {
+      try {
+        var t0 = Date.now();
+        var r = window.StegoCore.embedSecret(state.carrierImageData, state.secretImageData, {
+          onProgress: makeProgress(embedBar, embedStatus)
+        });
+        var dt = Date.now() - t0;
+        state.stegoImageData = r.outputImageData;
+        drawToCanvas($('stegoPreview'), r.outputImageData);
+        show($('stegoPreview'), $('stegoHint'));
+
+        $('sK').textContent = r.stats.K;
+        $('sN').textContent = r.stats.N;
+        $('sSym').textContent = r.stats.symbolSize;
+        $('sTextured').textContent = r.stats.texturedTiles;
+        $('sUsed').textContent = r.stats.usedTiles;
+        $('sSecret').textContent = r.stats.secretBytes;
+
+        embedBar.style.width = '100%';
+        $('downloadStegoBtn').disabled = false;
+        $('useForExtractBtn').disabled = false;
+        setStatus(embedStatus, '嵌入完成：用了 ' + r.stats.usedTiles + ' 个 Tile，耗时 ' + dt + ' ms。', 'ok');
+        console.log('[StegoCore] 嵌入统计：', r.stats);
+      } catch (err) {
+        console.error('[StegoCore] 嵌入失败：', err);
+        setStatus(embedStatus, '嵌入失败：' + err.message, 'err');
+      } finally {
+        embedBtn.disabled = false;
+      }
+    }, 30);
+  });
+
+  $('downloadStegoBtn').addEventListener('click', function () {
+    if (!state.stegoImageData) return;
+    downloadImageData(state.stegoImageData, 'stego-image.png').then(function (blob) {
+      setStatus(embedStatus, '隐写图已导出（' + (blob.size / 1024).toFixed(1) + ' KB）', 'ok');
+    });
+  });
+
+  $('useForExtractBtn').addEventListener('click', function () {
+    if (!state.stegoImageData) return;
+    setExtractInput(state.stegoImageData, '来自嵌入区的隐写图');
+    setStatus($('extractStatus'), '已把嵌入结果送至提取区，点"开始提取"即可。', 'ok');
+  });
+
+  // ---------- 提取区 ----------
+  var stegoFile = $('stegoFile'), extractBtn = $('extractBtn');
+  var extractBar = $('extractProgressBar'), extractStatus = $('extractStatus');
+
+  function setExtractInput(imageData, label) {
+    state.extractInput = imageData;
+    drawToCanvas($('stegoInputPreview'), imageData);
+    show($('stegoInputPreview'), $('stegoInputHint'));
+    extractBtn.disabled = false;
+    setStatus(extractStatus, '提取输入：' + label + '（' + imageData.width + '×' + imageData.height + '）');
+  }
+
+  stegoFile.addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    setStatus(extractStatus, '正在读取隐写图…');
+    loadImageDataFromFile(f).then(function (imgData) {
+      setExtractInput(imgData, f.name);
+    }).catch(function (err) {
+      setStatus(extractStatus, '隐写图载入失败：' + err.message, 'err');
+    });
+  });
+
+  extractBtn.addEventListener('click', function () {
+    if (!state.extractInput) return;
+    extractBtn.disabled = true;
+    setStatus(extractStatus, '开始提取…');
+    extractBar.style.width = '0%';
+    setTimeout(function () {
+      try {
+        var t0 = Date.now();
+        var r = window.StegoCore.extractSecret(state.extractInput, {
+          onProgress: makeProgress(extractBar, extractStatus)
+        });
+        var dt = Date.now() - t0;
+
+        $('xSuccess').textContent = r.success ? '成功' : '失败';
+        $('xSuccess').style.color = r.success ? '#00e676' : '#ff4d6a';
+        $('xTiles').textContent = r.validTiles + ' / ' + r.totalTiles;
+        $('xK').textContent = r.K_effective;
+        $('xSize').textContent = r.success ? (r.secretWidth + '×' + r.secretHeight) : '-';
+
+        drawToCanvas($('maskPreview'), r.debugMask);
+        show($('maskPreview'), $('maskHint'));
+
+        if (r.success && r.secretImageData) {
+          state.lastSecret = r.secretImageData;
+          drawToCanvas($('extractedPreview'), r.secretImageData);
+          show($('extractedPreview'), $('extractedHint'));
+          $('downloadSecretBtn').disabled = false;
+          setStatus(extractStatus, '提取成功：有效 Tile ' + r.validTiles + '/' + r.totalTiles +
+            '，K_effective=' + r.K_effective + '，耗时 ' + dt + ' ms。', 'ok');
+        } else if (r.success && r.secretJpegBytes) {
+          // v2：秘密图是 JPEG 载荷，需要异步解码才能预览
+          $('downloadSecretBtn').disabled = false;
+          state.lastJpeg = r.secretJpegBytes;
+          if (r.decodeSupported && window.StegoCore.decodeSecretImage) {
+            window.StegoCore.decodeSecretImage(r.secretJpegBytes).then(function (img) {
+              state.lastSecret = img;
+              drawToCanvas($('extractedPreview'), img);
+              show($('extractedPreview'), $('extractedHint'));
+            });
+          } else {
+            $('extractedHint').classList.remove('hidden');
+            $('extractedHint').textContent = '已还原 JPEG 载荷 ' +
+              (r.secretJpegBytes.length / 1024).toFixed(1) + ' KB（当前环境无 JPEG 解码器，无法预览）';
+          }
+          setStatus(extractStatus, '提取成功：有效 Tile ' + r.validTiles + '/' + r.totalTiles +
+            '，K_effective=' + r.K_effective + '，JPEG ' +
+            (r.secretJpegBytes.length / 1024).toFixed(1) + ' KB，耗时 ' + dt + ' ms。', 'ok');
+        } else {
+          state.lastSecret = null;
+          $('downloadSecretBtn').disabled = true;
+          setStatus(extractStatus, '提取失败：有效 Tile ' + r.validTiles + '/' + r.totalTiles +
+            '，K_effective=' + r.K_effective + '（需要至少 K 个符号且多数表决票数≥2），耗时 ' + dt + ' ms。', 'err');
+        }
+        console.log('[StegoCore] 提取结果：', {
+          success: r.success, validTiles: r.validTiles, totalTiles: r.totalTiles,
+          K_effective: r.K_effective, secretWidth: r.secretWidth, secretHeight: r.secretHeight
+        });
+      } catch (err) {
+        console.error('[StegoCore] 提取异常：', err);
+        setStatus(extractStatus, '提取异常：' + err.message, 'err');
+      } finally {
+        extractBtn.disabled = false;
+      }
+    }, 30);
+  });
+
+  $('downloadSecretBtn').addEventListener('click', function () {
+    if (state.lastJpeg) {
+      // v2：秘密载荷就是 JPEG 字节流，直接导出
+      window.ImageUtils.downloadBlob(new Blob([state.lastJpeg], { type: 'image/jpeg' }), 'extracted-secret.jpg');
+      setStatus(extractStatus, '秘密图已导出（' + (state.lastJpeg.length / 1024).toFixed(1) + ' KB）', 'ok');
+      return;
+    }
+    if (!state.lastSecret) return;
+    downloadImageData(state.lastSecret, 'extracted-secret.png').then(function (blob) {
+      setStatus(extractStatus, '秘密图已导出（' + (blob.size / 1024).toFixed(1) + ' KB）', 'ok');
+    });
+  });
+
+  console.log('[StegoCore] 就绪，可用接口：', Object.keys(window.StegoCore).join(', '));
+})();
+</script>
+</body>
+</html>

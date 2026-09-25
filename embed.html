@@ -1,0 +1,638 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%234c8dff'/><path d='M16 7a5 5 0 0 0-5 5v3h-1.5v10h13V15H21v-3a5 5 0 0 0-5-5zm0 3a2 2 0 0 1 2 2v3h-4v-3a2 2 0 0 1 2-2z' fill='%23fff'/></svg>">
+<title>嵌入 · 图片抗干扰隐写工具</title>
+<meta name="description" content="选两张图，在浏览器本地生成一张藏着秘密图的图片，不上传任何服务器。">
+<style>
+  :root {
+    --bg: #0f1319; --panel: #171d26; --line: #2a3341; --text: #e6e9ef;
+    --muted: #97a3b6; --accent: #4c8dff; --green: #2ecc71; --red: #ff5470; --warn: #ffb020;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.75 "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  }
+  header.nav { position: sticky; top: 0; z-index: 10; background: rgba(15,19,25,.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+  .nav-inner { max-width: 860px; margin: 0 auto; padding: 12px 18px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .brand { font-weight: 700; letter-spacing: .5px; }
+  .brand span { color: var(--accent); }
+  nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 8px; font-size: 14px; }
+  nav a:hover { color: var(--text); background: #202836; }
+  nav a.active { color: #fff; background: var(--accent); }
+  main { max-width: 860px; margin: 0 auto; padding: 26px 18px 40px; }
+  h1 { font-size: 24px; margin: 4px 0 8px; line-height: 1.45; }
+  p.lead { color: var(--muted); margin: 0 0 20px; }
+  h2 { font-size: 17px; margin: 0 0 14px; }
+  h3 { font-size: 15px; margin: 0 0 8px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start; }
+  .row > .grow { flex: 1 1 260px; min-width: 240px; }
+  label.pick {
+    display: block; border: 1px dashed var(--line); border-radius: 10px;
+    padding: 16px; text-align: center; cursor: pointer; margin-bottom: 8px;
+  }
+  label.pick:hover { border-color: var(--accent); }
+  label.pick b { display: block; font-size: 15.5px; margin-bottom: 4px; }
+  label.pick span { color: var(--muted); font-size: 13px; }
+  input[type=file] { position: absolute; width: 1px; height: 1px; opacity: 0; overflow: hidden; }
+  canvas.thumb { max-width: 100%; border-radius: 8px; border: 1px solid var(--line); background: #0a0d12; display: block; }
+  .hint { padding: 18px 12px; text-align: center; color: var(--muted); border: 1px dashed var(--line); border-radius: 8px; font-size: 13px; }
+  .hidden { display: none !important; }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 8px; word-break: break-all; }
+  button {
+    padding: 11px 20px; border-radius: 9px; border: 1px solid var(--line);
+    background: #232a36; color: var(--text); cursor: pointer; font-size: 15px;
+  }
+  button:hover:not(:disabled) { background: #2c3442; border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  .bigbtn {
+    width: 100%; padding: 18px; font-size: 18px; font-weight: 600;
+    background: var(--accent); border-color: var(--accent); color: #fff;
+  }
+  .bigbtn:hover:not(:disabled) { background: #3d7cf0; }
+  .ready { border-radius: 10px; padding: 13px 16px; font-size: 15px; margin-top: 14px; border: 1px solid var(--line); background: #0b0f15; color: var(--muted); }
+  .ready.ok { border-color: var(--green); color: var(--green); }
+  .ready.warn { border-color: var(--warn); color: var(--warn); }
+  .ready.bad { border-color: var(--red); color: var(--red); }
+  .progress { height: 10px; background: #0b0f15; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin-top: 14px; }
+  .progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .05s linear; }
+  .status { font-size: 13.5px; min-height: 20px; margin-top: 10px; color: var(--muted); }
+  .status.err { color: var(--red); }
+  .status.ok { color: var(--green); }
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 20px; margin-bottom: 16px; }
+  summary { cursor: pointer; font-weight: 600; }
+  .opt { margin: 14px 0 4px; }
+  .opt label { display: block; font-weight: 600; margin-bottom: 6px; font-size: 15px; }
+  select { background: #0b0f15; color: var(--text); border: 1px solid var(--line); border-radius: 8px; padding: 9px 11px; font-size: 14.5px; min-width: 300px; max-width: 100%; }
+  .optdesc { color: var(--muted); font-size: 13.5px; margin: 8px 0 0; }
+  .summary { font-size: 15px; margin: 0 0 10px; }
+  .summary b { color: var(--green); }
+  .tip { color: var(--muted); font-size: 14px; margin: 10px 0 0; }
+  /* 抗损坏自测的四个按钮：小一号，横排换行 */
+  .simrow { display: flex; flex-wrap: wrap; gap: 10px; margin: 14px 0 0; }
+  .simrow button { padding: 9px 14px; font-size: 14px; }
+  footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 13.5px; margin-top: 26px; }
+  .footer-inner { max-width: 860px; margin: 0 auto; padding: 18px; display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+  .footer-inner a { color: var(--accent); text-decoration: none; }
+  .footer-inner a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <div class="brand">图片抗干扰<span>隐写</span></div>
+    <nav>
+      <a href="index.html">首页</a>
+      <a href="embed.html" class="active">嵌入</a>
+      <a href="extract.html">提取</a>
+      <a href="tech.html">技术原理</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <h1>把秘密图藏进图片里</h1>
+  <p class="lead">选两张图，点一下按钮。全部处理都在你的浏览器里完成，图片不会被上传到任何地方。</p>
+
+  <!-- 1. 选图 -->
+  <div class="panel">
+    <h2>第 1 步：选择两张图</h2>
+    <div class="row">
+      <div class="grow">
+        <label class="pick" for="carrierFile">
+          <b>选择载体图（用于伪装的图片）</b>
+          <span>别人看到的就是这张；越有纹理（花草、砖墙、噪点）越好</span>
+        </label>
+        <input id="carrierFile" type="file" accept="image/*">
+        <div class="hint" id="carrierHint">尚未选择</div>
+        <canvas id="carrierThumb" class="thumb hidden"></canvas>
+        <div class="meta" id="carrierMeta"></div>
+      </div>
+      <div class="grow">
+        <label class="pick" for="secretFile">
+          <b>选择秘密图（要隐藏的图片）</b>
+          <span>只有拿到隐写图的人才能把它还原出来</span>
+        </label>
+        <input id="secretFile" type="file" accept="image/*">
+        <div class="hint" id="secretHint">尚未选择</div>
+        <canvas id="secretThumb" class="thumb hidden"></canvas>
+        <div class="meta" id="secretMeta"></div>
+      </div>
+    </div>
+    <p class="tip" id="secretNote"></p>
+    <div class="ready" id="readyText">上传两张图后可开始</div>
+  </div>
+
+  <!-- 2. 开始 -->
+  <div class="panel">
+    <h2>第 2 步：开始嵌入</h2>
+    <button id="embedBtn" class="bigbtn" disabled>开始嵌入</button>
+    <div class="progress"><i id="progressBar"></i></div>
+    <div class="status" id="statusText"></div>
+  </div>
+
+  <!-- 3. 结果 -->
+  <div class="panel" id="resultPanel">
+    <h2>第 3 步：保存并分享</h2>
+    <div class="row">
+      <div class="grow">
+        <div class="hint" id="stegoHint">还没有生成</div>
+        <canvas id="stegoThumb" class="thumb hidden"></canvas>
+      </div>
+      <div class="grow">
+        <p class="summary" id="resultSummary"></p>
+        <p class="tip" id="shareTip"></p>
+        <p style="margin-top:14px;"><button id="downloadStegoBtn" disabled>下载隐写图</button></p>
+      </div>
+    </div>
+
+    <!-- 传输方式：本工具最关键的注意事项，放在结果区里，用户一保存就能看到 -->
+    <details id="channelPanel" open>
+      <summary>⚠️ 推荐传输方式（决定对方能不能还原）</summary>
+      <p class="tip">隐写图里的改动只有几个灰度级，平台一旦重新压缩或缩放就会把它抹掉。所以传输方式比图片本身更重要。</p>
+      <ul class="diag">
+        <li>✅ 推荐：微信「发送原图」、QQ「发送文件」、邮件附件、云盘分享、U 盘/数据线直传</li>
+        <li>❌ 避免：微信/QQ 普通发送、朋友圈、截图后再发、用图片编辑器打开后另存</li>
+      </ul>
+      <p class="tip">判断标准很简单：对方收到的文件<strong>尺寸和大小</strong>与你发出去的一致，就是无损的。微信普通发送会把长边压到 1080 像素并重新编码，实测这种情况下提取会完全失败。</p>
+    </details>
+  </div>
+
+  <!-- 4. 抗损坏自测（内存里模拟，不动已生成的文件） -->
+  <div class="panel">
+    <h2>第 4 步（可选）：模拟损坏并测试</h2>
+    <p class="tip">想知道这张隐写图被遮挡后还能不能还原？点下面的按钮，工具会在内存里把图中一块区域涂黑，再跑一次完整的提取 —— 你保存的文件不会被改动。</p>
+    <div class="row">
+      <div class="grow">
+        <p class="simrow">
+          <button class="simbtn" data-ratio="0.1" disabled>遮住 10% 再试</button>
+          <button class="simbtn" data-ratio="0.25" disabled>遮住 25% 再试</button>
+          <button class="simbtn" data-ratio="0.4" disabled>遮住 40% 再试</button>
+          <button class="simbtn" data-ratio="0.5" disabled>遮住 50% 再试</button>
+        </p>
+        <div class="status" id="simResult">先生成隐写图，然后就能在这里自测抗损坏能力。</div>
+      </div>
+      <div class="grow">
+        <div class="hint" id="simHint">模拟损坏的效果会显示在这里</div>
+        <canvas id="simThumb" class="thumb hidden"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- 高级设置（默认收起） -->
+  <details id="advancedPanel">
+    <summary>高级设置（一般不用改）</summary>
+
+    <div class="opt">
+      <label for="redundancy">抗损坏档位</label>
+      <select id="redundancy">
+        <option value="standard" selected>标准（推荐）—— 稳定抗 25~35% 局部损坏，容量较小</option>
+        <option value="balanced">均衡 —— 稳定抗 15~25% 局部损坏，容量 +33%</option>
+        <option value="compact">紧凑 —— 稳定抗 10~15% 局部损坏，容量 +60%</option>
+      </select>
+    </div>
+
+    <div class="opt">
+      <label for="scaleMode">抗缩放模式</label>
+      <select id="scaleMode">
+        <option value="auto" selected>自动（推荐）—— 容量够就开启，不够就关闭</option>
+        <option value="on">强制开启 —— 图会被平台缩小也能还原，但能藏的数据少一些</option>
+        <option value="off">关闭 —— 能藏的数据更多，但图被缩小后可能还原不出来</option>
+      </select>
+    </div>
+
+    <p class="optdesc" id="advancedDesc"></p>
+  </details>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <a href="index.html#faq">使用帮助 →</a>
+    <a href="tech.html">了解技术原理 →</a>
+    <span>提示：隐写图请以 PNG 保存并以"原图/文件"方式分享；被平台重新压缩或缩小后可能无法还原。</span>
+  </div>
+</footer>
+
+<script src="js/image-utils.js"></script>
+<script src="js/dct-stego.js"></script>
+<script src="js/packet.js"></script>
+<script src="js/raptorq.js"></script>
+<script src="js/geo-calibration.js"></script>
+<script src="js/stego-core.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  // 依赖自检：任一核心模块没加载成功时，给用户一句人话，而不是让页面静默失效
+  var CONST = window.StegoCore && window.StegoCore.CONST;
+  if (!CONST || !window.ImageUtils) {
+    document.addEventListener('DOMContentLoaded', function () {
+      var el = document.getElementById('readyText');
+      if (el) {
+        el.className = 'ready bad';
+        el.textContent = '程序没有加载完整：请确认 js/ 目录与 embed.html 在同一个文件夹里，然后刷新页面。';
+      }
+    });
+    return;
+  }
+
+  var state = {
+    carrier: null,          // 载体图 ImageData
+    secret: null,           // 秘密图 ImageData
+    stego: null,            // 生成的隐写图 ImageData
+    plan: null,             // 预判结果 { width, height, scale, jpegBytes }
+    lowFreq: false,         // 最终采用的抗缩放模式（由档位 + 预判共同决定）
+    textured: null,         // 载体图可承载的数据块数（缓存）
+    jpegCache: {}           // 各候选尺寸的 JPEG 体积（缓存，避免反复编码）
+  };
+
+  function setStatus(msg, kind) {
+    var el = $('statusText');
+    el.textContent = msg || '';
+    el.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function drawThumb(canvas, imageData) {
+    canvas.width = imageData.width;
+    canvas.height = imageData.height;
+    var ctx = canvas.getContext('2d');
+    if (typeof ctx.putImageData === 'function') { ctx.putImageData(imageData, 0, 0); return; }
+    var img = ctx.createImageData(imageData.width, imageData.height);
+    img.data.set(imageData.data);
+    ctx.putImageData(img, 0, 0);
+  }
+
+  function makeCanvasFromImageData(imageData) {
+    var c = document.createElement('canvas');
+    c.width = imageData.width;
+    c.height = imageData.height;
+    c.getContext('2d').putImageData(imageData, 0, 0);
+    return c;
+  }
+
+  /** 把秘密图按长边缩放到指定像素（与嵌入时的处理方式一致） */
+  function resizeToLongSide(imageData, longSide) {
+    var resized = window.ImageUtils.resizeImage(makeCanvasFromImageData(imageData), longSide);
+    return window.ImageUtils.getImageData(resized);
+  }
+
+  /** 估算某张图编码成 JPEG 后的字节数（先用同步接口量一次，与真正嵌入时同一质量） */
+  function jpegBytesOf(imageData) {
+    try {
+      var url = makeCanvasFromImageData(imageData).toDataURL('image/jpeg', 0.75);
+      var comma = url.indexOf(',');
+      if (comma < 0) return 0;
+      return Math.floor((url.length - comma - 1) * 3 / 4);
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  function currentRedundancy() { return $('redundancy').value; }
+
+  /**
+   * 载体图能承载的数据块数（与档位无关，只跟载体图本身有关）—— 缓存，避免反复扫描整图。
+   */
+  /**
+   * 载体能承载多少块 —— 用**安全块**数，而不是"方差达标的纹理块"数。
+   *
+   * 为什么：选块看 64×64 Tile 方差，但嵌入强度 margin 看 8×8 块方差。像"云块状天空"
+   * 这种块间差大、块内平的区域，Tile 方差达标却几乎没有纹理余量，块级 margin 只有
+   * 8~10 —— 实测这些块在 JPEG 下会成片失效（q0.80 存活 0%）。内核现在优先只用安全块，
+   * 这里跟着用同一个口径，页面预判才不会说"放得下"、结果却被缩小。
+   */
+  function texturedTiles() {
+    if (state.textured === null && state.carrier) {
+      var cap = window.StegoCore.analyzeCapacity(state.carrier, 0, {
+        redundancy: currentRedundancy()
+      });
+      state.textured = { safe: cap.safeTiles, textured: cap.texturedTiles, skipped: cap.lowMarginRejected };
+    }
+    if (state.textured === null) return 0;
+    // 一个安全块都没有时内核会回落到全部纹理块，预判也跟着回落到纹理块
+    return state.textured.safe > 0 ? state.textured.safe : state.textured.textured;
+  }
+
+  /** 因"太平滑/太亮/太暗"而被跳过的块数（页面用它给用户一句解释） */
+  function skippedTiles() {
+    texturedTiles();
+    return state.textured === null ? 0 : state.textured.skipped;
+  }
+
+  /**
+   * 预判"这张秘密图会被缩到多大"。
+   * 这里只是给用户一个提前提示（以及决定"自动"档位选哪种模式），
+   * 真正的缩放决策仍然由嵌入过程自己完成，以它为准。
+   * 每一次候选尺寸的 JPEG 体积会缓存起来（换档位时不必重复编码）。
+   */
+  function planFor(lowFreq) {
+    if (!state.carrier || !state.secret) return null;
+    var mode = lowFreq ? CONST.MODE_4 : CONST.MODE_6;
+    var factor = CONST.REDUNDANCY[currentRedundancy()];
+    var room = texturedTiles();
+    var head = CONST.SECRET_HEADER_BYTES;
+    var factors = CONST.AUTO_RESIZE_FACTORS;
+    var minSide = CONST.MIN_SECRET_LONG_SIDE;
+    var W = state.secret.width, H = state.secret.height;
+    for (var i = 0; i < factors.length; i++) {
+      var scale = factors[i];
+      var longSide = Math.round(Math.max(W, H) * scale);
+      if (scale < 1 && longSide < minSide) break;
+      var cand = state.jpegCache[scale];
+      if (!cand) {
+        var img = scale === 1 ? state.secret : resizeToLongSide(state.secret, longSide);
+        cand = { width: img.width, height: img.height, bytes: jpegBytesOf(img) };
+        state.jpegCache[scale] = cand;
+      }
+      if (!cand.bytes) return null;
+      var parts = Math.ceil((head + cand.bytes) / mode.symbolSize);
+      if (Math.ceil(parts * factor) <= room) {
+        return { width: cand.width, height: cand.height, scale: scale, jpegBytes: cand.bytes };
+      }
+    }
+    return null;
+  }
+
+  /**
+   * 决定最终用哪种模式：
+   *   'on'  → 抗缩放模式；'off' → 普通模式；
+   *   'auto'→ 两者都能放时，优先"不用缩小"的那一种；都要缩小则优先抗缩放模式（更稳）。
+   */
+  function resolveMode() {
+    var want = $('scaleMode').value;
+    if (want === 'on') return { lowFreq: true, plan: planFor(true) };
+    if (want === 'off') return { lowFreq: false, plan: planFor(false) };
+    var low = planFor(true);
+    var normal = planFor(false);
+    if (low && !normal) return { lowFreq: true, plan: low };
+    if (!low && normal) return { lowFreq: false, plan: normal };
+    if (!low && !normal) return { lowFreq: false, plan: null };
+    if (low.scale === 1 && normal.scale !== 1) return { lowFreq: true, plan: low };
+    if (normal.scale === 1) return { lowFreq: false, plan: normal };
+    return low.scale >= normal.scale ? { lowFreq: true, plan: low } : { lowFreq: false, plan: normal };
+  }
+
+  var REDUNDANCY_HINT = {
+    standard: '标准：稳定抗 25~35% 的局部损坏，容量较小，适合不确定会被怎么转发的图。',
+    balanced: '均衡：稳定抗 15~25%，容量比标准档多约三分之一，适合大多数情况。',
+    compact: '紧凑：稳定抗 10~15%，容量比标准档多约六成，适合确定不会被大面积遮挡的图。'
+  };
+  var SCALE_HINT = {
+    auto: '自动：工具先试着用"抗缩放"方式装；装不下时自动改用普通方式，你不用操心。',
+    on: '强制开启：图即使被平台缩小到一半，也能还原；代价是能藏的数据减少约三分之一。',
+    off: '关闭：能藏的数据最多；但如果对方收到的图被缩小过，可能还原不出来。'
+  };
+
+  function refreshAdvancedDesc() {
+    $('advancedDesc').textContent =
+      REDUNDANCY_HINT[currentRedundancy()] + ' ' + SCALE_HINT[$('scaleMode').value];
+  }
+
+  /** 刷新"是否可开始"的提示（灰 / 黄 / 绿 / 红 四态） */
+  function refreshReady() {
+    var el = $('readyText');
+    if (!state.carrier || !state.secret) {
+      el.className = 'ready';
+      el.textContent = '上传两张图后可开始';
+      $('embedBtn').disabled = true;
+      state.plan = null;
+      return;
+    }
+    var r = resolveMode();
+    state.lowFreq = r.lowFreq;
+    state.plan = r.plan;
+    if (!r.plan) {
+      el.className = 'ready bad';
+      el.textContent = '这张载体图放不下这张秘密图（载体图太小或太平淡），请换一张更大、纹理更丰富的图。';
+      setStatus('秘密图已经缩到最小仍放不下，无法嵌入。', 'err');
+      $('embedBtn').disabled = true;
+      return;
+    }
+    $('embedBtn').disabled = false;
+    // 有一批"太平滑（几乎没有纹理余量）"的块被内核主动跳过了 —— 如实告诉用户代价在哪，
+    // 免得以为"能嵌"就一定能扛住转发过程中的压缩。
+    var skipped = skippedTiles();
+    var skipNote = skipped > 0 ? '（已避开 ' + skipped + ' 个过于平滑的区域，这些区域单独承载数据时扛不住压缩）' : '';
+    if (r.plan.scale === 1) {
+      el.className = skipped > 0 ? 'ready warn' : 'ready ok';
+      el.textContent = '已就绪，点击下方按钮开始' + skipNote;
+      setStatus(skipped > 0 ? '已避开 ' + skipped + ' 个过于平滑的区域，秘密图仍按原尺寸嵌入。' : '');
+    } else {
+      el.className = 'ready warn';
+      el.textContent = '秘密图偏大，将自动缩小至 ' + r.plan.width + '×' + r.plan.height + skipNote;
+      setStatus('嵌入时会自动把秘密图缩小后重试。');
+    }
+  }
+
+  // ---------- 载体图 ----------
+  $('carrierFile').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    window.ImageUtils.loadImage(f).then(function (img) {
+      var data = window.ImageUtils.getImageData(img);
+      state.carrier = data;
+      state.textured = null;          // 载体图换了，可承载量重新计算
+      drawThumb($('carrierThumb'), data);
+      $('carrierThumb').classList.remove('hidden');
+      $('carrierHint').classList.add('hidden');
+      $('carrierMeta').textContent = f.name + ' ｜ ' + data.width + ' × ' + data.height + ' 像素';
+      refreshReady();
+    }).catch(function (err) {
+      alert('载体图载入失败：' + err.message);
+    });
+  });
+
+  // ---------- 秘密图 ----------
+  $('secretFile').addEventListener('change', function (e) {
+    var f = e.target.files && e.target.files[0];
+    if (!f) return;
+    window.ImageUtils.loadImage(f).then(function (img) {
+      var data = window.ImageUtils.getImageData(img);
+      state.secret = data;
+      state.jpegCache = {};           // 秘密图换了，体积缓存作废
+      drawThumb($('secretThumb'), data);
+      $('secretThumb').classList.remove('hidden');
+      $('secretHint').classList.add('hidden');
+      $('secretMeta').textContent = f.name + ' ｜ ' + data.width + ' × ' + data.height + ' 像素';
+      $('secretNote').textContent = '秘密图会自动压缩；如果载体图装不下，会自动缩小后再嵌入。';
+      refreshReady();
+    }).catch(function (err) {
+      alert('秘密图载入失败：' + err.message);
+    });
+  });
+
+  // ---------- 档位变化 ----------
+  $('redundancy').addEventListener('change', function () {
+    refreshAdvancedDesc();
+    refreshReady();
+  });
+  $('scaleMode').addEventListener('change', function () {
+    refreshAdvancedDesc();
+    refreshReady();
+  });
+  refreshAdvancedDesc();
+
+  // ---------- 进度 ----------
+  function onProgress(phase, cur, total) {
+    var p = total > 0 ? Math.round(cur / total * 100) : 0;
+    $('progressBar').style.width = p + '%';
+    var label = phase === 'encode' ? '准备数据' : (phase === 'embed' ? '写入图片' : '处理中');
+    setStatus(label + '… ' + p + '%');
+  }
+
+  // ---------- 嵌入 ----------
+  $('embedBtn').addEventListener('click', function () {
+    if (!state.carrier || !state.secret) return;
+    var mode = resolveMode();          // 点击时重新判一次，避免档位改动后状态过期
+    state.lowFreq = mode.lowFreq;
+    $('embedBtn').disabled = true;
+    $('progressBar').style.width = '0%';
+    setStatus('正在处理…（大图请耐心等待）');
+
+    setTimeout(function () {
+      try {
+        var t0 = Date.now();
+        var result = window.StegoCore.embedSecret(state.carrier, state.secret, {
+          redundancy: currentRedundancy(),
+          lowFrequencyMode: state.lowFreq,
+          secretJpegQuality: 0.75,
+          secretKeepColor: true,
+          tileStrategy: 'spread',
+          onProgress: onProgress
+        });
+        var dt = Date.now() - t0;
+
+        state.stego = result.outputImageData;
+        drawThumb($('stegoThumb'), result.outputImageData);
+        $('stegoThumb').classList.remove('hidden');
+        $('stegoHint').classList.add('hidden');
+        $('downloadStegoBtn').disabled = false;
+
+        var s = result.stats;
+        $('resultSummary').innerHTML = '已嵌入 <b>' + (s.secretJpegBytes / 1024).toFixed(1) +
+          ' KB</b> 数据，用时 <b>' + (dt / 1000).toFixed(1) + ' 秒</b>' +
+          (s.secretAutoResized
+            ? '（秘密图已自动缩小到 ' + s.secretFinalSize.W + '×' + s.secretFinalSize.H + '）'
+            : '');
+        $('shareTip').textContent = '把这张图发给对方，对方用"提取"页就能看到秘密图。' +
+          '⚠️ 必须通过"原图/文件"方式传输，不要用微信/QQ 的普通发送。';
+
+        $('progressBar').style.width = '100%';
+        setStatus('完成。别忘了点"下载隐写图"保存到本地。', 'ok');
+
+        // 隐写图就绪后，开放第 4 步的抗损坏自测（先清掉上一轮的测试痕迹）
+        setSimButtons(false);
+        $('simThumb').classList.add('hidden');
+        $('simHint').classList.remove('hidden');
+        $('simResult').className = 'status';
+        $('simResult').textContent = '隐写图已生成，可点上面的按钮模拟遮挡后能不能还原。';
+      } catch (err) {
+        setStatus('嵌入失败：' + err.message, 'err');
+        alert(err.message);
+      } finally {
+        $('embedBtn').disabled = false;
+      }
+    }, 30);
+  });
+
+  // ---------- 抗损坏自测 ----------
+  //
+  // 原理：把图中央一块矩形涂黑，模拟"被贴纸 / 水印 / 裁切遮住一片"。
+  //   · 涂黑区域对齐到 64 像素的 Tile 网格（与嵌入时一致），这样被涂掉的是**整块**数据，
+  //     而不是"每块都蹭掉一点" —— 后者会被纠删码当成大面积误码，测出的结果没有意义。
+  //   · 用中央一整块而不是随机撒点：真实损坏多是成片的，成片破坏还会连带毁掉该区域的
+  //     网格定位信息，比随机撒点更接近实战。
+  //   · 全程只在内存里做，不触碰已生成的隐写图。
+  function blackenCenter(imageData, ratio) {
+    var TS = CONST.TILE_SIZE;
+    var W = imageData.width, H = imageData.height;
+    var out = new ImageData(new Uint8ClampedArray(imageData.data), W, H);
+    // 先定宽、再按面积定高，两者都取 64 的整数倍（至少 1 块）
+    var side = Math.sqrt(Math.max(0, ratio) * W * H);
+    var bw = Math.max(TS, Math.floor(side / TS) * TS);
+    var bh = Math.max(TS, Math.floor((Math.max(0, ratio) * W * H) / bw / TS) * TS);
+    bw = Math.min(bw, W);
+    bh = Math.min(bh, H);
+    var x0 = Math.max(0, Math.floor((W - bw) / 2 / TS) * TS);
+    var y0 = Math.max(0, Math.floor((H - bh) / 2 / TS) * TS);
+    var x1 = Math.min(W, x0 + bw), y1 = Math.min(H, y0 + bh);
+    var d = out.data, x, y, i;
+    for (y = y0; y < y1; y++) {
+      for (x = x0; x < x1; x++) {
+        i = (y * W + x) * 4;
+        d[i] = 0; d[i + 1] = 0; d[i + 2] = 0;        // 涂黑（alpha 保持 255）
+      }
+    }
+    return { image: out, area: (x1 - x0) * (y1 - y0) / (W * H), rect: [x0, y0, x1 - x0, y1 - y0] };
+  }
+
+  function setSimButtons(disabled) {
+    var btns = document.querySelectorAll('.simbtn');
+    for (var i = 0; i < btns.length; i++) btns[i].disabled = disabled;
+  }
+
+  function simulateDamage(ratio) {
+    if (!state.stego) return;
+    var shown = Math.round(ratio * 100);
+    setSimButtons(true);
+    $('simResult').className = 'status';
+    $('simResult').textContent = '正在模拟遮住 ' + shown + '% …';
+    setTimeout(function () {
+      try {
+        var t0 = Date.now();
+        var damaged = blackenCenter(state.stego, ratio);
+        drawThumb($('simThumb'), damaged.image);
+        $('simThumb').classList.remove('hidden');
+        $('simHint').classList.add('hidden');
+        var r = window.StegoCore.extractSecret(damaged.image);
+        var dt = Date.now() - t0;
+        var seconds = (dt / 1000).toFixed(1);
+        var head = '模拟损坏 ' + shown + '%（实际遮住 ' + Math.round(damaged.area * 100) + '%）：';
+        var detail = r.success
+          ? '提取成功，用时 ' + seconds + ' 秒。'
+          : '提取失败，读出 ' + r.validTiles + '/' + r.K_effective + ' 个数据块（不够还原），用时 ' + seconds + ' 秒。';
+        $('simResult').textContent = head + detail;
+        $('simResult').className = 'status ' + (r.success ? 'ok' : 'err');
+        setStatus(head + detail, r.success ? 'ok' : 'err');
+      } catch (err) {
+        $('simResult').className = 'status err';
+        $('simResult').textContent = '模拟测试出错：' + err.message;
+      } finally {
+        setSimButtons(false);
+      }
+    }, 30);
+  }
+
+  (function bindSimButtons() {
+    var btns = document.querySelectorAll('.simbtn');
+    for (var i = 0; i < btns.length; i++) {
+      (function (btn) {
+        btn.addEventListener('click', function () {
+          simulateDamage(parseFloat(btn.getAttribute('data-ratio')));
+        });
+      })(btns[i]);
+    }
+  })();
+
+  // ---------- 下载 ----------
+  $('downloadStegoBtn').addEventListener('click', function () {
+    if (!state.stego) return;
+    var canvas = makeCanvasFromImageData(state.stego);
+    window.ImageUtils.canvasToBlob(canvas, 'image/png').then(function (blob) {
+      window.ImageUtils.downloadBlob(blob, 'stego.png');
+      setStatus('已保存 stego.png（' + (blob.size / 1024).toFixed(1) + ' KB）。', 'ok');
+    }).catch(function (err) {
+      alert('保存失败：' + err.message);
+    });
+  });
+})();
+</script>
+</body>
+</html>

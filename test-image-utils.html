@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%234c8dff'/><path d='M16 7a5 5 0 0 0-5 5v3h-1.5v10h13V15H21v-3a5 5 0 0 0-5-5zm0 3a2 2 0 0 1 2 2v3h-4v-3a2 2 0 0 1 2-2z' fill='%23fff'/></svg>">
+<title>ImageUtils 验证页 —— Tile 纹理方差可视化</title>
+<!--
+  说明：
+  - 普通 script 标签引入，无 ES Module、无构建工具、无任何外部依赖；
+  - 双击 file:// 打开即可使用（本地 Blob URL 不会被判定为跨域，画布不会被污染）。
+-->
+<style>
+  :root {
+    --bg: #12151c;
+    --panel: #1b2029;
+    --line: #2c3442;
+    --text: #e6e9ef;
+    --muted: #98a2b3;
+    --green: #00e676;
+    --red: #ff4d6a;
+    --accent: #4c8dff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    padding: 24px;
+    background: var(--bg);
+    color: var(--text);
+    font: 14px/1.6 "Segoe UI", "Microsoft YaHei", system-ui, sans-serif;
+  }
+  h1 { font-size: 20px; margin: 0 0 4px; }
+  .sub { color: var(--muted); font-size: 13px; margin-bottom: 18px; }
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    padding: 16px;
+    margin-bottom: 16px;
+  }
+  .row { display: flex; flex-wrap: wrap; gap: 16px; align-items: center; }
+  .row + .row { margin-top: 12px; }
+  label { color: var(--muted); }
+  input[type=range] { width: 320px; max-width: 60vw; accent-color: var(--accent); }
+  input[type=number] {
+    width: 90px; padding: 4px 6px; border-radius: 6px;
+    border: 1px solid var(--line); background: #0f1319; color: var(--text);
+  }
+  input[type=file] { color: var(--muted); }
+  button {
+    padding: 8px 16px; border-radius: 8px; border: 1px solid var(--line);
+    background: #232a36; color: var(--text); cursor: pointer; font-size: 14px;
+  }
+  button:hover:not(:disabled) { background: #2c3442; border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.primary:hover:not(:disabled) { background: #3d7cf0; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+  .grid h2 { font-size: 15px; margin: 0 0 10px; color: var(--muted); font-weight: 600; }
+  canvas, img.preview {
+    max-width: 100%; display: block; border-radius: 6px;
+    border: 1px solid var(--line); background: #0a0d12;
+    image-rendering: pixelated;
+  }
+  .hint {
+    padding: 28px 16px; text-align: center; color: var(--muted);
+    border: 1px dashed var(--line); border-radius: 8px;
+  }
+  .hidden { display: none !important; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .stat { background: #0f1319; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; }
+  .stat .k { color: var(--muted); font-size: 12px; }
+  .stat .v { font-size: 18px; font-variant-numeric: tabular-nums; margin-top: 2px; }
+  .legend { display: flex; gap: 18px; color: var(--muted); font-size: 13px; align-items: center; }
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 6px; }
+  .dot.g { background: var(--green); }
+  .dot.r { background: var(--red); }
+  .status { font-size: 13px; margin-top: 10px; min-height: 20px; }
+  .status.err { color: var(--red); }
+  .status.ok { color: var(--green); }
+  code { background: #0f1319; padding: 1px 5px; border-radius: 4px; color: #9fd0ff; }
+</style>
+</head>
+<body>
+
+<h1>ImageUtils 验证页</h1>
+<div class="sub">
+  Tile 纹理方差可视化：方差 ≥ 阈值的 Tile 画<span style="color:var(--green)">绿框</span>（纹理丰富，适合承载隐写信息），
+  低于阈值的画<span style="color:var(--red)">红框</span>（平坦区域，人眼敏感，应回避）。
+</div>
+
+<div class="panel">
+  <div class="row">
+    <label for="file">选择图片：</label>
+    <input id="file" type="file" accept="image/*">
+    <span class="legend">
+      <span><i class="dot g"></i>方差 ≥ 阈值</span>
+      <span><i class="dot r"></i>方差 &lt; 阈值</span>
+    </span>
+  </div>
+  <div class="row">
+    <label for="threshold">阈值（0 ~ 3000）：</label>
+    <input id="threshold" type="range" min="0" max="3000" step="1" value="200">
+    <input id="thresholdNum" type="number" min="0" max="3000" step="1" value="200">
+    <label style="margin-left:8px;">
+      <input id="fillToggle" type="checkbox"> 低纹理区域半透明填充
+    </label>
+  </div>
+  <div class="row">
+    <button id="exportBtn" class="primary" disabled>导出当前可视化为 PNG</button>
+    <span class="status" id="status"></span>
+  </div>
+</div>
+
+<div class="panel">
+  <h2 style="font-size:15px;margin:0 0 10px;color:var(--muted);font-weight:600;">统计信息（同时输出到浏览器控制台）</h2>
+  <div class="stats">
+    <div class="stat"><div class="k">Tile 总数</div><div class="v" id="sTotal">-</div></div>
+    <div class="stat"><div class="k">方差最小值</div><div class="v" id="sMin">-</div></div>
+    <div class="stat"><div class="k">方差最大值</div><div class="v" id="sMax">-</div></div>
+    <div class="stat"><div class="k">方差平均值</div><div class="v" id="sAvg">-</div></div>
+    <div class="stat"><div class="k">筛选出的 Tile 数</div><div class="v" id="sFiltered">-</div></div>
+    <div class="stat"><div class="k">图像尺寸 / Tile 尺寸</div><div class="v" id="sSize" style="font-size:15px;">-</div></div>
+  </div>
+</div>
+
+<div class="grid">
+  <div class="panel">
+    <h2>原图预览</h2>
+    <div class="hint" id="previewHint">尚未选择图片 —— 请先点击上方「选择图片」上传一张图片（支持 PNG / JPG / WebP / GIF / BMP）。</div>
+    <img id="preview" class="preview hidden" alt="原图预览">
+  </div>
+  <div class="panel">
+    <h2>Tile 可视化（绿框 = 高方差，红框 = 低方差）</h2>
+    <div class="hint" id="canvasHint">尚未选择图片 —— 上传后将在此处显示 Tile 网格与方差着色框。</div>
+    <canvas id="canvas" class="hidden"></canvas>
+  </div>
+</div>
+
+<script src="js/image-utils.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ---------- 常量与状态 ----------
+  var TILE_SIZE = 64;              // 与 splitIntoTiles 默认值一致
+  var DEFAULT_THRESHOLD = 200;     // 需求规定默认阈值
+
+  var state = {
+    image: null,        // HTMLImageElement
+    imageData: null,    // 原图 ImageData
+    tiles: null,        // Tile[]
+    variances: null,    // number[]，与 tiles 一一对应
+    threshold: DEFAULT_THRESHOLD,
+    previewURL: null,   // 预览用的对象 URL（换图时需要 revoke）
+    rafId: 0
+  };
+
+  // ---------- DOM 引用 ----------
+  var $ = function (id) { return document.getElementById(id); };
+  var fileInput = $('file');
+  var thresholdInput = $('threshold');
+  var thresholdNum = $('thresholdNum');
+  var fillToggle = $('fillToggle');
+  var exportBtn = $('exportBtn');
+  var preview = $('preview');
+  var previewHint = $('previewHint');
+  var canvas = $('canvas');
+  var canvasHint = $('canvasHint');
+  var status = $('status');
+
+  function setStatus(msg, kind) {
+    status.textContent = msg || '';
+    status.className = 'status' + (kind ? ' ' + kind : '');
+  }
+
+  function fmt(n) {
+    if (typeof n !== 'number' || !isFinite(n)) return '-';
+    return Number.isInteger(n) ? String(n) : n.toFixed(3);
+  }
+
+  // ============================================================
+  // 统计：Tile 总数 / 方差 min / max / avg / 筛选数量
+  // 同时写入页面与控制台
+  // ============================================================
+  function updateStats() {
+    var vars = state.variances;
+    var total = vars ? vars.length : 0;
+    var selected = 0;
+    var min = Infinity, max = -Infinity, sum = 0;
+
+    if (total > 0) {
+      for (var i = 0; i < total; i++) {
+        var v = vars[i];
+        if (v < min) min = v;
+        if (v > max) max = v;
+        sum += v;
+        if (v >= state.threshold) selected++;
+      }
+    } else {
+      min = 0; max = 0;
+    }
+    var avg = total > 0 ? sum / total : 0;
+
+    $('sTotal').textContent = total ? String(total) : '-';
+    $('sMin').textContent = total ? fmt(min) : '-';
+    $('sMax').textContent = total ? fmt(max) : '-';
+    $('sAvg').textContent = total ? fmt(avg) : '-';
+    $('sFiltered').textContent = total ? String(selected) : '-';
+    $('sSize').textContent = state.imageData
+      ? state.imageData.width + ' x ' + state.imageData.height + ' / ' + TILE_SIZE + 'px'
+      : '-';
+
+    if (total > 0) {
+      // 需求要求的控制台输出
+      console.groupCollapsed('[ImageUtils] Tile 统计（阈值 = ' + state.threshold + '）');
+      console.log('Tile 总数：', total);
+      console.log('方差最小值：', min);
+      console.log('方差最大值：', max);
+      console.log('方差平均值：', avg);
+      console.log('筛选出的 Tile 数量（方差 >= 阈值）：', selected, '/', total,
+        '（占比 ' + (selected / total * 100).toFixed(2) + '%）');
+      console.log('图像尺寸：', state.imageData.width + 'x' + state.imageData.height,
+        '｜ Tile 尺寸：', TILE_SIZE);
+      console.groupEnd();
+      return { total: total, min: min, max: max, avg: avg, selected: selected };
+    }
+    return { total: 0, min: 0, max: 0, avg: 0, selected: 0 };
+  }
+
+  // ============================================================
+  // 渲染：底图 + Tile 边框着色
+  // ============================================================
+  function render() {
+    if (!state.imageData || !state.tiles) return;
+
+    var imgData = state.imageData;
+    var W = imgData.width, H = imgData.height;
+    // 设置尺寸会清空画布，因此每次都重新贴底图
+    canvas.width = W;
+    canvas.height = H;
+    var ctx = canvas.getContext('2d');
+    ctx.putImageData(imgData, 0, 0);
+
+    // 线宽随图片尺寸放大，保证在 CSS 缩放显示时依然看得见
+    var lw = Math.max(1, Math.round(Math.max(W, H) / 700));
+    ctx.lineWidth = lw;
+
+    var th = state.threshold;
+    var fillLow = fillToggle.checked;
+
+    for (var i = 0; i < state.tiles.length; i++) {
+      var t = state.tiles[i];
+      var isTextured = state.variances[i] >= th;
+
+      if (!isTextured && fillLow) {
+        // 低纹理区域：淡淡的红色蒙版，便于一眼看出"禁区"
+        ctx.fillStyle = 'rgba(255, 77, 106, 0.18)';
+        ctx.fillRect(t.x, t.y, t.width, t.height);
+      }
+      // 边框画在 Tile 内侧，避免相邻 Tile 之间线宽翻倍
+      ctx.strokeStyle = isTextured ? '#00e676' : '#ff4d6a';
+      ctx.strokeRect(t.x + lw / 2, t.y + lw / 2,
+        Math.max(0, t.width - lw), Math.max(0, t.height - lw));
+    }
+  }
+
+  // 滑块拖动时用 rAF 合并重绘，避免高频重排
+  function scheduleRender() {
+    if (state.rafId) return;
+    state.rafId = requestAnimationFrame(function () {
+      state.rafId = 0;
+      render();
+      updateStats();
+    });
+  }
+
+  // ============================================================
+  // 载入图片 -> 切 Tile -> 计算方差
+  // ============================================================
+  function handleFile(file) {
+    if (!file) return;
+    if (!/^image\//.test(file.type)) {
+      setStatus('请选择图片文件（当前类型：' + (file.type || '未知') + '）', 'err');
+      return;
+    }
+    setStatus('正在解析图片…');
+
+    window.ImageUtils.loadImage(file).then(function (img) {
+      state.image = img;
+
+      // 预览使用独立的对象 URL：loadImage 内部已经 revoke 了它自己的 URL
+      if (state.previewURL) URL.revokeObjectURL(state.previewURL);
+      state.previewURL = URL.createObjectURL(file);
+      preview.src = state.previewURL;
+      preview.classList.remove('hidden');
+      previewHint.classList.add('hidden');
+
+      // 取像素数据（file:// 下读本地 Blob 同源，不会污染画布）
+      state.imageData = window.ImageUtils.getImageData(img);
+
+      // 切 Tile 并逐个计算纹理方差
+      state.tiles = window.ImageUtils.splitIntoTiles(state.imageData, TILE_SIZE);
+      state.variances = state.tiles.map(function (t) {
+        return window.ImageUtils.calculateTileVariance(t);
+      });
+
+      if (state.tiles.length === 0) {
+        canvas.classList.add('hidden');
+        canvasHint.textContent = '该图片没有可切分的像素（宽或高为 0）。';
+        canvasHint.classList.remove('hidden');
+        exportBtn.disabled = true;
+        setStatus('图片尺寸无效，无法切分 Tile。', 'err');
+        return;
+      }
+
+      canvasHint.classList.add('hidden');
+      canvas.classList.remove('hidden');
+      exportBtn.disabled = false;
+      render();
+      var s = updateStats();
+      setStatus('已解析：' + state.imageData.width + '×' + state.imageData.height +
+        '，共 ' + s.total + ' 个 Tile，命中 ' + s.selected + ' 个（阈值 ' + state.threshold + '）。', 'ok');
+      console.log('[ImageUtils] 图片已载入：', {
+        name: file.name,
+        size: file.size + ' bytes',
+        type: file.type,
+        width: img.naturalWidth,
+        height: img.naturalHeight
+      });
+    }).catch(function (err) {
+      console.error('[ImageUtils] 载入失败：', err);
+      // SecurityError 说明浏览器把这张图画布判成了"被污染"，此时无法读取像素
+      if (err && err.name === 'SecurityError') {
+        setStatus('读取像素被浏览器安全策略拦截（画布被污染）。请改用本地 HTTP 服务打开本页，' +
+          '或确认所选文件是本机图片。', 'err');
+      } else {
+        setStatus('载入失败：' + err.message, 'err');
+      }
+    });
+  }
+
+  // ============================================================
+  // 事件绑定
+  // ============================================================
+  fileInput.addEventListener('change', function (e) {
+    var file = e.target.files && e.target.files[0];
+    handleFile(file);
+  });
+
+  function setThreshold(value, syncFrom) {
+    var v = Number(value);
+    if (!isFinite(v)) v = DEFAULT_THRESHOLD;
+    v = Math.min(3000, Math.max(0, Math.round(v)));
+    state.threshold = v;
+    if (syncFrom !== 'range') thresholdInput.value = String(v);
+    if (syncFrom !== 'number') thresholdNum.value = String(v);
+    scheduleRender();  // 实时更新
+  }
+
+  thresholdInput.addEventListener('input', function (e) { setThreshold(e.target.value, 'range'); });
+  thresholdNum.addEventListener('input', function (e) { setThreshold(e.target.value, 'number'); });
+  fillToggle.addEventListener('change', scheduleRender);
+  setThreshold(DEFAULT_THRESHOLD); // 初始化滑块与数字框
+
+  // 导出当前可视化
+  exportBtn.addEventListener('click', function () {
+    if (!state.imageData) return;
+    exportBtn.disabled = true;
+    setStatus('正在导出 PNG…');
+    window.ImageUtils.canvasToBlob(canvas, 'image/png', 0.92).then(function (blob) {
+      window.ImageUtils.downloadBlob(blob, 'tile-variance-threshold-' + state.threshold + '.png');
+      setStatus('已导出 PNG（' + (blob.size / 1024).toFixed(1) + ' KB），阈值 = ' + state.threshold + '。', 'ok');
+      console.log('[ImageUtils] 导出可视化：', blob.size, 'bytes，阈值 =', state.threshold);
+    }).catch(function (err) {
+      console.error('[ImageUtils] 导出失败：', err);
+      setStatus('导出失败：' + err.message, 'err');
+    }).then(function () {
+      exportBtn.disabled = false;
+    });
+  });
+
+  // 页面打开时的自检，方便确认库已正确加载
+  console.log('[ImageUtils] 已加载，可用接口：', Object.keys(window.ImageUtils).join(', '));
+})();
+</script>
+</body>
+</html>

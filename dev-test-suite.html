@@ -1,0 +1,351 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%234c8dff'/><path d='M16 7a5 5 0 0 0-5 5v3h-1.5v10h13V15H21v-3a5 5 0 0 0-5-5zm0 3a2 2 0 0 1 2 2v3h-4v-3a2 2 0 0 1 2-2z' fill='%23fff'/></svg>">
+<title>开发者测试页（自动化测试） · 图片抗干扰隐写工具</title>
+<meta name="description" content="开发者验证工具：在真实浏览器里跑 36 个退化场景测试，覆盖 JPEG 压缩、缩放、涂黑、裁切、水印与几何重同步。">
+<style>
+  :root {
+    --bg: #0f1319; --panel: #171d26; --line: #2a3341; --text: #e6e9ef;
+    --muted: #97a3b6; --accent: #4c8dff; --green: #2ecc71; --red: #ff5470; --warn: #ffb020;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.7 "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  }
+  header.nav { position: sticky; top: 0; z-index: 10; background: rgba(15,19,25,.92); backdrop-filter: blur(6px); border-bottom: 1px solid var(--line); }
+  .nav-inner { max-width: 1080px; margin: 0 auto; padding: 12px 18px; display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
+  .brand { font-weight: 700; letter-spacing: .5px; }
+  .brand span { color: var(--accent); }
+  nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 8px; font-size: 14px; }
+  nav a:hover { color: var(--text); background: #202836; }
+  nav a.active { color: #fff; background: var(--accent); }
+  main { max-width: 1080px; margin: 0 auto; padding: 24px 18px 40px; }
+  h1 { font-size: 22px; margin: 4px 0 6px; }
+  h2 { font-size: 16px; margin: 0 0 12px; }
+  p.lead { color: var(--muted); margin: 0 0 18px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px 18px; margin-bottom: 16px; }
+  .row { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; }
+  button {
+    padding: 10px 18px; border-radius: 9px; border: 1px solid var(--line);
+    background: #232a36; color: var(--text); cursor: pointer; font-size: 15px;
+  }
+  button:hover:not(:disabled) { background: #2c3442; border-color: var(--accent); }
+  button:disabled { opacity: .45; cursor: not-allowed; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  button.primary:hover:not(:disabled) { background: #3d7cf0; }
+  button.filter.active { background: #2c3442; border-color: var(--accent); color: #fff; }
+  .progress { height: 12px; background: #0b0f15; border: 1px solid var(--line); border-radius: 6px; overflow: hidden; margin-top: 12px; }
+  .progress > i { display: block; height: 100%; width: 0; background: var(--accent); transition: width .1s linear; }
+  .progress-text { font-size: 13px; color: var(--muted); margin-top: 8px; min-height: 20px; }
+  table.results { width: 100%; border-collapse: collapse; font-size: 14px; }
+  table.results th, table.results td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  table.results th { color: var(--muted); font-weight: 500; white-space: nowrap; }
+  table.results td.idx { color: var(--muted); font-variant-numeric: tabular-nums; }
+  table.results td.ms { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  table.results td.detail { color: var(--muted); font-size: 13px; word-break: break-word; }
+  .badge { display: inline-block; padding: 2px 10px; border-radius: 999px; font-size: 13px; font-weight: 600; }
+  .badge.pass { background: rgba(46,204,113,.16); color: var(--green); border: 1px solid var(--green); }
+  .badge.fail { background: rgba(255,84,112,.16); color: var(--red); border: 1px solid var(--red); }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+  .stat { background: #0b0f15; border: 1px solid var(--line); border-radius: 9px; padding: 10px 12px; }
+  .stat .k { color: var(--muted); font-size: 12px; }
+  .stat .v { font-size: 18px; font-variant-numeric: tabular-nums; }
+  #nsWarning { display: none; border: 1px solid var(--red); background: rgba(255,84,112,.12); color: var(--red); border-radius: 9px; padding: 10px 12px; margin-bottom: 14px; font-size: 14px; }
+  .devnote {
+    border: 1px solid var(--warn); background: rgba(255,176,32,.10); color: var(--warn);
+    border-radius: 9px; padding: 10px 12px; margin-bottom: 16px; font-size: 13px;
+  }
+  details { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 12px 18px; margin-top: 16px; }
+  summary { cursor: pointer; font-weight: 600; }
+  ol.manual { margin: 10px 0 0; padding-left: 22px; color: var(--muted); }
+  ol.manual li { margin-bottom: 6px; }
+  ol.manual b { color: var(--text); }
+  code { background: #0b0f15; padding: 1px 5px; border-radius: 4px; color: #9fd0ff; font-size: 13px; }
+  footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 13px; }
+  .footer-inner { max-width: 1080px; margin: 0 auto; padding: 18px; }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <div class="brand">图片抗干扰<span>隐写</span></div>
+    <nav>
+      <a href="index.html">首页</a>
+      <a href="embed.html">嵌入</a>
+      <a href="extract.html">提取</a>
+      <a href="tech.html">技术原理</a>
+      <a href="dev-test-suite.html" class="active">开发者测试</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="devnote">本页为开发者验证工具，普通用户无需访问。</div>
+  <h1>浏览器内自动化测试（开发者测试页）</h1>
+  <p class="lead">
+    在真实浏览器里用 Canvas 生成退化图（JPEG 重编码、真实缩放、水印合成），检验隐写载荷的抗干扰能力；
+    另外覆盖容量、冗余档位与自动缩放。
+    共 36 个用例，分 6 组；每个用例都会完整走一遍"生成载体 → 生成秘密图 → 嵌入 → 施加退化 → 提取 → 载荷逐字节比对"。
+  </p>
+
+  <div id="nsWarning"></div>
+
+  <div class="panel">
+    <div class="row">
+      <button id="startBtn" class="primary">开始全部测试</button>
+      <button id="clearBtn">清空结果</button>
+    </div>
+    <div class="progress"><i id="progressBar"></i></div>
+    <div class="progress-text" id="progressText">尚未开始。点击"开始全部测试"运行全部 36 个用例。</div>
+  </div>
+
+  <div class="panel">
+    <h2>结果</h2>
+    <div class="row" style="margin-bottom:12px;">
+      <button class="filter active" id="filterAll" data-group="all">全部</button>
+      <button class="filter" id="filterBaseline" data-group="baseline">baseline（JPEG/缩放）</button>
+      <button class="filter" id="filterBlackout" data-group="blackout">blackout（涂黑）</button>
+      <button class="filter" id="filterCrop" data-group="crop">crop（裁切）</button>
+      <button class="filter" id="filterWatermark" data-group="watermark">watermark（水印）</button>
+      <button class="filter" id="filterCapacity" data-group="capacity">capacity（容量/自动缩放）</button>
+      <button class="filter" id="filterResync" data-group="resync">resync（几何重同步）</button>
+    </div>
+    <table class="results">
+      <thead>
+        <tr>
+          <th>序号</th><th>测试名</th><th>结果</th><th>耗时(ms)</th><th>备注</th>
+        </tr>
+      </thead>
+      <tbody id="resultBody">
+        <tr><td colspan="5" style="color:#97a3b6;text-align:center;padding:18px;">暂无结果</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="panel">
+    <h2>统计</h2>
+    <div class="stats">
+      <div class="stat"><div class="k">总数</div><div class="v" id="statTotal">0</div></div>
+      <div class="stat"><div class="k">通过</div><div class="v" id="statPass" style="color:#2ecc71;">0</div></div>
+      <div class="stat"><div class="k">失败</div><div class="v" id="statFail" style="color:#ff5470;">0</div></div>
+      <div class="stat"><div class="k">总耗时</div><div class="v" id="statTime">0 ms</div></div>
+    </div>
+  </div>
+
+  <details id="manualPanel">
+    <summary>人工验收清单（自动化测不了的部分，请手动逐项确认）</summary>
+    <ol class="manual">
+      <li>打开 <b>index.html</b> → 点击"去嵌入""去提取"两个大按钮，确认跳转正确；
+        三张特性卡、"怎么用"三步、两处黄色警告区与"常见问题（FAQ）"折叠面板都正常显示，
+        展开 FAQ 的五条问答，确认页脚 GitHub 占位符与 GPL-3.0 协议说明在位。</li>
+      <li>打开 <b>embed.html</b> → 上传一张纹理丰富的载体图（≥512×512）与一张秘密图，观察：
+        状态提示是否在"上传两张图后可开始 / 秘密图偏大，将自动缩小至 W×H / 已就绪"之间正确切换；
+        点击"开始嵌入"后进度条是否推进；完成后是否出现隐写图预览、自然语言统计与"下载隐写图"；
+        展开"高级设置"切换抗损坏档位与抗缩放模式，确认文字说明随之变化（三档文案应为
+        "稳定抗 25~35% / 15~25% / 10~15%"，不要再用旧的等分面积表述）；
+        确认结果区出现"⚠️ 推荐传输方式（决定对方能不能还原）"折叠说明，且分享提示里带
+        "必须通过'原图/文件'方式传输"的警告；
+        再换一张"大片平滑天空 + 少量细纹"的图，确认提示里出现"已避开 N 个过于平滑的区域"
+        （这些区域单独承载数据时扛不住压缩，工具不会把数据放进去）；
+        最后点第 4 步"遮住 10% / 25% / 40% / 50% 再试"，确认右侧出现被涂黑的对比图、状态行给出
+        "模拟损坏 X%：提取成功，用时 Y 秒"（或"读出 N/K 个数据块"），且下载的隐写图未被改动。</li>
+      <li>打开 <b>extract.html</b> → 上传刚刚下载的 <code>stego.png</code>，确认：
+        提取成功（绿底提示）、秘密图预览与"用时 YY 秒"；展开"查看诊断详情"，确认方块校验图以绿色为主，
+        且"常规提取"一行同时给出 6 对模式与 4 对低频模式的读数（成功时会注明"未再试 4 对低频模式"）；
+        点击"下载秘密图"能保存（<b>预览即使不可用也必须能下载</b>：预览失败时提示应为
+        "数据已还原，但预览不可用，请直接下载"，而不是抛出 getImageData 之类的技术错误）；
+        再上传一张未隐写的图片，确认显示红底友好提示而非报错，
+        且状态行仍带真实读数（"常规提取 0/K 块…未检测到标尺"），不会只显示一个 0。</li>
+      <li>打开 <b>tech.html</b> → 确认学术论文体：摘要 / Abstract / 关键词 / 参考文献齐全，
+        9 章结构与本报告一致，6 幅字符图与 8 张编号表正常显示，
+        "传输信道要求"一节给出微信原图与普通发送的对照，§7.1 有 T30 已知限制说明，
+        底部回到首页与开发者测试页的链接可用。</li>
+      <li>打开 <b>dev-test-suite.html</b> → 点击"开始全部测试"，观察结果表格逐行实时更新、分组筛选可用、底部统计正确；
+        对失败项（若有）展开备注查看具体数字。</li>
+      <li>打开 <b>test-image-utils.html</b> 与 <b>test-stego-pipeline.html</b>（开发工具页），确认仍可正常运行：
+        前者能上传图片并显示方差绿/红框；后者能完成一次嵌入与提取闭环。</li>
+      <li>断网后再打开以上页面，确认全部功能不受影响（零外部依赖、无 CDN）。</li>
+    </ol>
+  </details>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    测试全部在浏览器本地运行，不上传任何数据。缩放与 JPEG 重编码使用浏览器原生 Canvas，结果与实机一致。
+  </div>
+</footer>
+
+<script src="js/image-utils.js"></script>
+<script src="js/dct-stego.js"></script>
+<script src="js/packet.js"></script>
+<script src="js/raptorq.js"></script>
+<script src="js/geo-calibration.js"></script>
+<script src="js/stego-core.js"></script>
+<script src="js/test-suite.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  var $ = function (id) { return document.getElementById(id); };
+
+  var REQUIRED_NS = ['ImageUtils', 'DctStego', 'Packet', 'RaptorQ', 'GeoCalibration', 'StegoCore', 'TestSuite'];
+
+  var state = {
+    results: [],        // 全部结果（含分组）
+    running: false,
+    filter: 'all'
+  };
+
+  // ---------- 依赖自检 ----------
+  function checkNamespaces() {
+    var missing = REQUIRED_NS.filter(function (n) { return !window[n]; });
+    if (missing.length) {
+      var w = $('nsWarning');
+      w.style.display = 'block';
+      w.textContent = '缺少必要模块：' + missing.join('、') +
+        '。请确认 js/ 目录下的脚本存在且 script 标签顺序为 image-utils → dct-stego → packet → raptorq → stego-core → test-suite。';
+      $('startBtn').disabled = true;
+      return false;
+    }
+    return true;
+  }
+
+  // ---------- 渲染 ----------
+  function renderTable() {
+    var body = $('resultBody');
+    body.textContent = '';
+    var rows = state.results.filter(function (r) {
+      return state.filter === 'all' || r.group === state.filter;
+    });
+    if (!rows.length) {
+      var tr0 = document.createElement('tr');
+      var td0 = document.createElement('td');
+      td0.colSpan = 5;
+      td0.style.color = '#97a3b6';
+      td0.style.textAlign = 'center';
+      td0.style.padding = '18px';
+      td0.textContent = state.results.length ? '该分组暂无结果' : '暂无结果';
+      tr0.appendChild(td0);
+      body.appendChild(tr0);
+      return;
+    }
+    rows.forEach(function (r, i) {
+      var tr = document.createElement('tr');
+
+      var tdIdx = document.createElement('td');
+      tdIdx.className = 'idx';
+      tdIdx.textContent = String(i + 1);
+      tr.appendChild(tdIdx);
+
+      var tdName = document.createElement('td');
+      tdName.textContent = r.name;
+      tr.appendChild(tdName);
+
+      var tdPass = document.createElement('td');
+      var badge = document.createElement('span');
+      badge.className = 'badge ' + (r.pass ? 'pass' : 'fail');
+      badge.textContent = r.pass ? 'PASS' : 'FAIL';
+      tdPass.appendChild(badge);
+      tr.appendChild(tdPass);
+
+      var tdMs = document.createElement('td');
+      tdMs.className = 'ms';
+      tdMs.textContent = r.elapsedMs.toFixed(1);
+      tr.appendChild(tdMs);
+
+      var tdDetail = document.createElement('td');
+      tdDetail.className = 'detail';
+      tdDetail.textContent = r.detail + (r.errorMsg ? '｜异常：' + r.errorMsg : '');
+      tr.appendChild(tdDetail);
+
+      body.appendChild(tr);
+    });
+  }
+
+  function renderStats() {
+    var total = state.results.length;
+    var pass = state.results.filter(function (r) { return r.pass; }).length;
+    var ms = state.results.reduce(function (s, r) { return s + r.elapsedMs; }, 0);
+    $('statTotal').textContent = total;
+    $('statPass').textContent = pass;
+    $('statFail').textContent = total - pass;
+    $('statTime').textContent = ms.toFixed(1) + ' ms';
+  }
+
+  // ---------- 运行 ----------
+  function setRunning(on) {
+    state.running = on;
+    $('startBtn').disabled = on || !checkNamespaces();
+    $('startBtn').textContent = on ? '测试进行中…' : '开始全部测试';
+  }
+
+  $('startBtn').addEventListener('click', function () {
+    if (state.running || !checkNamespaces()) return;
+    state.results = [];
+    renderTable();
+    renderStats();
+    setRunning(true);
+    $('progressBar').style.width = '0%';
+    $('progressText').textContent = '准备中…';
+
+    window.TestSuite.runAll(
+      function (cur, total, name) {
+        $('progressBar').style.width = Math.round((cur - 1) / total * 100) + '%';
+        $('progressText').textContent = '正在运行 ' + cur + ' / ' + total + '：' + name;
+      },
+      function (result) {
+        state.results.push(result);
+        renderTable();   // 每个用例完成后立即更新表格
+        renderStats();
+        $('progressText').textContent = '已完成 ' + state.results.length + ' 个用例：' + result.name +
+          '（' + (result.pass ? 'PASS' : 'FAIL') + '，' + result.elapsedMs.toFixed(1) + ' ms）';
+      }
+    ).then(function (all) {
+      $('progressBar').style.width = '100%';
+      var pass = all.filter(function (r) { return r.pass; }).length;
+      $('progressText').textContent = '全部完成：共 ' + all.length + ' 个用例，通过 ' + pass +
+        '，失败 ' + (all.length - pass) + '。';
+      setRunning(false);
+    }).catch(function (err) {
+      $('progressText').textContent = '测试运行异常：' + (err && err.message ? err.message : err);
+      setRunning(false);
+    });
+  });
+
+  $('clearBtn').addEventListener('click', function () {
+    if (state.running) return;
+    state.results = [];
+    renderTable();
+    renderStats();
+    $('progressBar').style.width = '0%';
+    $('progressText').textContent = '结果已清空。';
+  });
+
+  // ---------- 分组筛选 ----------
+  var filterBtns = [$('filterAll'), $('filterBaseline'), $('filterBlackout'), $('filterCrop'),
+    $('filterWatermark'), $('filterCapacity'), $('filterResync')];
+  filterBtns.forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      state.filter = btn.getAttribute('data-group');
+      filterBtns.forEach(function (b) { b.classList.remove('active'); });
+      btn.classList.add('active');
+      renderTable();
+    });
+  });
+
+  // ---------- 初始化 ----------
+  var ok = checkNamespaces();
+  renderStats();
+  console.log('[测试套件] 模块自检：' + (ok ? '全部就位' : '存在缺失'));
+  console.log('[测试套件] 用例分组：', window.TestSuite.TEST_GROUPS.map(function (g) {
+    return g.id + '(' + g.tests.length + ')';
+  }).join(', '));
+})();
+</script>
+</body>
+</html>

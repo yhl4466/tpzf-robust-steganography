@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>页面未找到 · 图片隐写工具</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%234c8dff'/><path d='M16 7a5 5 0 0 0-5 5v3h-1.5v10h13V15H21v-3a5 5 0 0 0-5-5zm0 3a2 2 0 0 1 2 2v3h-4v-3a2 2 0 0 1 2-2z' fill='%23fff'/></svg>">
+<style>
+  :root {
+    --bg: #0f1319; --panel: #171d26; --line: #2a3341; --text: #e6e9ef;
+    --muted: #97a3b6; --accent: #4c8dff; --green: #2ecc71; --red: #ff5470; --warn: #ffb020;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.75 "Segoe UI", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+  }
+  header.nav {
+    position: sticky; top: 0; z-index: 10;
+    background: rgba(15,19,25,.92); backdrop-filter: blur(6px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-inner {
+    max-width: 860px; margin: 0 auto; padding: 12px 18px;
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  }
+  .brand { font-weight: 700; letter-spacing: .5px; }
+  .brand span { color: var(--accent); }
+  nav a { color: var(--muted); text-decoration: none; padding: 6px 10px; border-radius: 8px; font-size: 14px; }
+  nav a:hover { color: var(--text); background: #202836; }
+  main { max-width: 860px; margin: 0 auto; padding: 48px 18px 60px; text-align: center; }
+  .code { font-size: 64px; font-weight: 700; color: var(--accent); line-height: 1.1; }
+  h1 { font-size: 24px; margin: 14px 0 10px; }
+  p { color: var(--muted); margin: 0 0 26px; }
+  .links { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; max-width: 640px; margin: 0 auto; }
+  a.bigbtn {
+    display: block; text-align: center; text-decoration: none;
+    background: var(--accent); color: #fff; font-size: 17px; font-weight: 600;
+    padding: 16px; border-radius: 10px; border: 1px solid var(--accent);
+  }
+  a.bigbtn.ghost { background: #1d2532; border-color: var(--line); color: var(--text); }
+  a.bigbtn:hover { filter: brightness(1.08); }
+  footer { border-top: 1px solid var(--line); color: var(--muted); font-size: 13.5px; margin-top: 30px; }
+  .footer-inner { max-width: 860px; margin: 0 auto; padding: 18px; display: flex; gap: 18px; flex-wrap: wrap; align-items: center; }
+  .footer-inner a { color: var(--accent); text-decoration: none; }
+  .footer-inner a:hover { text-decoration: underline; }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <div class="nav-inner">
+    <div class="brand">图片抗干扰<span>隐写</span></div>
+    <nav>
+      <a href="index.html">首页</a>
+      <a href="embed.html">嵌入</a>
+      <a href="extract.html">提取</a>
+      <a href="tech.html">技术原理</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <div class="code">404</div>
+  <h1>页面未找到</h1>
+  <p>这个地址不存在，可能是链接过期或输入有误。下面这几个入口可以直接用。</p>
+  <div class="links">
+    <a class="bigbtn" href="index.html">返回首页</a>
+    <a class="bigbtn ghost" href="embed.html">去嵌入</a>
+    <a class="bigbtn ghost" href="extract.html">去提取</a>
+    <a class="bigbtn ghost" href="tech.html">技术报告</a>
+  </div>
+</main>
+
+<footer>
+  <div class="footer-inner">
+    <a href="index.html">首页</a>
+    <a href="index.html#faq">使用帮助 →</a>
+    <a href="tech.html">技术报告 →</a>
+    <span>若地址由 GitHub Pages 提供，请确认仓库名与分支设置正确。</span>
+  </div>
+</footer>
+
+</body>
+</html>
