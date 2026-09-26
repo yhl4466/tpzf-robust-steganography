@@ -188,7 +188,14 @@
       <div class="grow">
         <p class="summary" id="resultSummary"></p>
         <p class="tip" id="shareTip"></p>
-        <p style="margin-top:14px;"><button id="downloadStegoBtn" disabled>下载隐写图</button></p>
+        <p style="margin-top:14px;">
+          <button id="downloadStegoBtn" disabled>下载隐写图</button>
+          <button id="downloadZipBtn" disabled>下载为 ZIP（推荐微信发送）</button>
+        </p>
+        <p class="tip" id="zipHint">
+          如果通过微信 / QQ 发送，建议用这个 ZIP 文件：平台只对"图片"重编码，对"文件"原样转发，
+          藏进去的数据不会被抹掉。对方收到后用提取页上传 ZIP 即可自动解压并提取。
+        </p>
       </div>
     </div>
 
@@ -270,6 +277,7 @@
 <script src="js/raptorq.js"></script>
 <script src="js/geo-calibration.js"></script>
 <script src="js/stego-core.js"></script>
+<script src="js/zip-pack.js"></script>
 <script src="js/carrier-generator.js"></script>
 <script>
 (function () {
@@ -903,6 +911,8 @@
         $('stegoThumb').classList.remove('hidden');
         $('stegoHint').classList.add('hidden');
         $('downloadStegoBtn').disabled = false;
+        // ZIP 按钮同时可用：ZIP 走"文件"通道，是微信/QQ 场景下更稳的发送方式
+        if (window.ZipPack) $('downloadZipBtn').disabled = false;
 
         var s = result.stats;
         $('resultSummary').innerHTML = '已嵌入 <b>' + (s.secretJpegBytes / 1024).toFixed(1) +
@@ -1020,6 +1030,25 @@
     }).catch(function (err) {
       alert('保存失败：' + err.message);
     });
+  });
+
+  /**
+   * 下载为 ZIP：把隐写图按 PNG 编码后装进一个"存储模式"的 ZIP（不压缩）。
+   * 为什么值得多这一步：微信/QQ 只对**图片**做重编码，对**文件**是原样转发，
+   * 因此走 ZIP 就绕开了会抹掉承载信号的图像通道（技术报告 §3.4 是这件事的实测依据）。
+   */
+  $('downloadZipBtn').addEventListener('click', function () {
+    if (!state.stego) return;
+    if (!window.ZipPack) { alert('ZIP 模块未加载：请确认 js/zip-pack.js 与 embed.html 在同一目录。'); return; }
+    try {
+      var r = window.ZipPack.packImage(state.stego, 'stego.png');
+      var blob = new Blob([r.zipBytes], { type: 'application/zip' });
+      window.ImageUtils.downloadBlob(blob, r.fileName);
+      setStatus('已保存 ' + r.fileName + '（' + (blob.size / 1024).toFixed(1) +
+        ' KB，内含 stego.png）——发给对方时选"发送文件"。', 'ok');
+    } catch (e) {
+      alert('ZIP 打包失败：' + e.message);
+    }
   });
 })();
 </script>

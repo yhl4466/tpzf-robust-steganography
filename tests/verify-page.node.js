@@ -34,7 +34,9 @@ const ROOT = path.join(__dirname, '..');
 const CORE_SCRIPTS = ['js/image-utils.js', 'js/dct-stego.js', 'js/packet.js', 'js/raptorq.js',
   'js/geo-calibration.js', 'js/stego-core.js'];
 // 嵌入页额外引入载体图生成器（放在核心库之后：它只用 ImageData/DOM，不依赖内核）
-const EMBED_SCRIPTS = CORE_SCRIPTS.concat(['js/carrier-generator.js']);
+const EMBED_SCRIPTS = CORE_SCRIPTS.concat(['js/zip-pack.js', 'js/carrier-generator.js']);
+// 提取页要能直接吃 ZIP，因此也引入 zip-pack（放在核心库之后：它只依赖 Packet）
+const EXTRACT_SCRIPTS = CORE_SCRIPTS.concat(['js/zip-pack.js']);
 
 // ------------------------------------------------------------------
 // 项目对外地址（仓库改名后统一在这里维护，改一处即可）
@@ -189,6 +191,7 @@ const KNOWN_GLOBALS = new Set([
   'CustomEvent', 'Event', 'DOMParser', 'XMLHttpRequest', 'Worker', 'MutationObserver',
   'ResizeObserver', 'IntersectionObserver', 'OffscreenCanvas', 'Path2D', 'crypto',
   'KeyboardEvent', 'MouseEvent', 'fullscreenElement',
+  'XMLSerializer', 'Blob', 'atob', 'btoa',
   // 本项目挂到全局的命名空间（库与测试套件）
   'ImageUtils', 'DctStego', 'Packet', 'RaptorQ', 'GeoCalibration', 'StegoCore', 'TestSuite'
 ]);
@@ -513,17 +516,31 @@ const PAGES = [
       },
       {
         name: '生成器引入与调用：carrier-generator.js 在核心库之后加载，分片异步生成并走同一条 embedSecret 流程',
-        fn: (h) => /js\/stego-core\.js"><\/script>\s*<script src="js\/carrier-generator\.js"><\/script>/.test(h) &&
+        fn: (h) => /js\/stego-core\.js"><\/script>[\s\S]{0,200}?js\/carrier-generator\.js"><\/script>/.test(h) &&
           /CarrierGenerator\.generateAsync\(/.test(h) &&
           /onProgress: function \(phase, done, total\)/.test(h) &&
           /state\.carrier = genState\.result\.imageData/.test(h) &&
           /refreshReady\(\)/.test(h) &&
           /analyzeCapacity/.test(h),
-        detail: (h) => `脚本顺序=${/js\/stego-core\.js"><\/script>\s*<script src="js\/carrier-generator\.js"><\/script>/.test(h)}；` +
+        detail: (h) => `脚本顺序=${/js\/stego-core\.js"><\/script>[\s\S]{0,200}?js\/carrier-generator\.js"><\/script>/.test(h)}；` +
           `调用 generateAsync=${/CarrierGenerator\.generateAsync\(/.test(h)}；` +
           `进度回调=${/onProgress: function \(phase, done, total\)/.test(h)}；` +
           `填入 state.carrier=${/state\.carrier = genState\.result\.imageData/.test(h)}；` +
           `复用容量分析=${/analyzeCapacity/.test(h)}`
+      },
+      {
+        name: 'ZIP 打包按钮：与"下载隐写图"并列、同样式，调用 ZipPack.packImage 下载 .zip，并给出用途说明',
+        fn: (h) => /id="downloadZipBtn"[^>]*>下载为 ZIP（推荐微信发送）</.test(h) &&
+          /ZipPack\.packImage\(state\.stego, 'stego\.png'\)/.test(h) &&
+          /new Blob\(\[r\.zipBytes\], \{ type: 'application\/zip' \}\)/.test(h) &&
+          /downloadBlob\(blob, r\.fileName\)/.test(h) &&
+          /id="zipHint"/.test(h) && /对方收到后用提取页上传 ZIP 即可自动解压并提取/.test(h) &&
+          /downloadZipBtn'\)\.disabled = false/.test(h),
+        detail: (h) => `按钮文案=${/id="downloadZipBtn"[^>]*>下载为 ZIP（推荐微信发送）</.test(h)}；` +
+          `调用 packImage=${/ZipPack\.packImage\(state\.stego, 'stego\.png'\)/.test(h)}；` +
+          `MIME=application/zip=${/new Blob\(\[r\.zipBytes\], \{ type: 'application\/zip' \}\)/.test(h)}；` +
+          `下载名用返回值=${/downloadBlob\(blob, r\.fileName\)/.test(h)}；提示文案=${/id="zipHint"/.test(h)}；` +
+          `完成后启用=${/downloadZipBtn'\)\.disabled = false/.test(h)}`
       },
       {
         name: '手机优化：灰度模式开关 + 画质/容量三档 + 上传后自动适配提示 + 装不下时的三条建议 + 窄屏默认紧凑档',
@@ -558,6 +575,7 @@ const PAGES = [
   {
     file: 'extract.html',
     sig: ['StegoCore', 'ImageUtils'],
+    scripts: EXTRACT_SCRIPTS,
     links: ['index.html', 'embed.html', 'extract.html', 'tech.html'],
     ids: ['stegoFile', 'inputHint', 'inputThumb', 'inputMeta', 'inputReady',
       'extractBtn', 'progressBar', 'statusText', 'resultBanner',
@@ -567,11 +585,24 @@ const PAGES = [
     noTerms: true,
     checks: [
       {
-        name: '标题文案：上传一张被隐写的图片，还原其中的秘密图',
+        name: '标题文案：上传一张被隐写的图片，还原其中的秘密图；上传区同时接受图片与 ZIP',
         fn: (h) => /上传一张被隐写的图片，还原其中的秘密图/.test(h) &&
-          /id="stegoFile"[^>]*accept="image\/\*"/.test(h) && /像素/.test(h),
+          /id="stegoFile"[^>]*accept="image\/\*,\.zip/.test(h) && /像素/.test(h) &&
+          /支持上传隐写图，或包含隐写图的 ZIP 文件/.test(h),
         detail: (h) => `标题=${/上传一张被隐写的图片，还原其中的秘密图/.test(h)}；` +
-          `accept=${/id="stegoFile"[^>]*accept="image\/\*"/.test(h)}；尺寸文案=${/像素/.test(h)}`
+          `accept 含 .zip=${/id="stegoFile"[^>]*accept="image\/\*,\.zip/.test(h)}；尺寸文案=${/像素/.test(h)}；` +
+          `顶部 ZIP 提示=${/支持上传隐写图，或包含隐写图的 ZIP 文件/.test(h)}`
+      },
+      {
+        name: 'ZIP 上传支持：按魔数 0x50 0x4B 0x03 0x04 识别 → unpack → 挑出图片 → 走同一条载入/提取流程',
+        fn: (h) => /0x50 && bytes\[1\] === 0x4B/.test(h) && /bytes\[2\] === 0x03/.test(h) &&
+          /ZipPack\.unpack\(zipBytes\)/.test(h) && /function pickImageFromZip/.test(h) &&
+          /\.png\$\/i\.test\(files\[i\]\.name\)/.test(h) &&
+          /function fileFromZip/.test(h) &&
+          /window\.ImageUtils\.loadImage\(blobOrFile\)/.test(h),
+        detail: (h) => `魔数判断(50 4B 03 04)=${/0x50 && bytes\[1\] === 0x4B/.test(h) && /bytes\[2\] === 0x03/.test(h)}；` +
+          `调用 unpack=${/ZipPack\.unpack\(zipBytes\)/.test(h)}；优先取 .png=${/\.png\$\/i\.test\(files\[i\]\.name\)/.test(h)}；` +
+          `解出的 Blob 走同一载入流程=${/window\.ImageUtils\.loadImage\(blobOrFile\)/.test(h)}`
       },
       {
         name: '大按钮"开始提取" + 进度条 + 状态行',
@@ -924,6 +955,79 @@ const PAGES = [
     ]
   },
   {
+    // B 站封面（单文件、内联 SVG、可导出 PNG）。不引入任何核心库，因此 scripts 为空。
+    file: 'cover.html',
+    useCore: false,
+    scripts: [],
+    links: [],
+    ids: ['cover', 'dl', 'msg', 'guide', 'safeGuide'],
+    checks: [
+      {
+        name: '封面 SVG 为 1920×1080 且等比自适应（内联 svg 不写死 width/height）',
+        fn: (h) => /viewBox="0 0 1920 1080"/.test(h) && /preserveAspectRatio="xMidYMid meet"/.test(h) &&
+          !/<svg id="cover"[^>]*\swidth="\d/.test(h),
+        detail: (h) => `viewBox=${/viewBox="0 0 1920 1080"/.test(h)}；` +
+          `preserveAspectRatio=${/preserveAspectRatio="xMidYMid meet"/.test(h)}；` +
+          `内联 svg 未写死宽度=${!/<svg id="cover"[^>]*\swidth="\d/.test(h)}`
+      },
+      {
+        name: '主标题"涂黑一半，也能还原"（拆 tspan 保持整句居中）+ 副标题 + 底部小字',
+        fn: (h) => /涂黑一半，/.test(h) && /也能还原/.test(h) &&
+          /RobustStego · 抗干扰图片隐写工具/.test(h) &&
+          /纯前端 · 零依赖 · 浏览器本地运行/.test(h) &&
+          /<tspan class="t-white">涂黑一半，<\/tspan>/.test(h),
+        detail: (h) => `主标题=${/涂黑一半，/.test(h) && /也能还原/.test(h)}；` +
+          `副标题=${/RobustStego · 抗干扰图片隐写工具/.test(h)}；底部小字=${/纯前端 · 零依赖 · 浏览器本地运行/.test(h)}；` +
+          `tspan 分色=${/<tspan class="t-white">涂黑一半，<\/tspan>/.test(h)}`
+      },
+      {
+        name: '三要素齐全：被涂黑的载体图 + 红色虚线标注 + 箭头"提取" + 绿色打勾的秘密图',
+        fn: (h) => /损坏 25%/.test(h) && /stroke-dasharray="16 10"/.test(h) &&
+          /fill="#05090f"/.test(h) && /<polygon points="200,0 262,27 200,54"/.test(h) &&
+          /arrow-label/.test(h) && /秘密图（完整还原）/.test(h) &&
+          /stroke="#22c55e" stroke-width="12"/.test(h),
+        detail: (h) => `损坏标注=${/损坏 25%/.test(h)}；红虚线=${/stroke-dasharray="16 10"/.test(h)}；` +
+          `黑色涂块=${/fill="#05090f"/.test(h)}；箭头=${/<polygon points="200,0 262,27 200,54"/.test(h)}；` +
+          `提取标签=${/arrow-label/.test(h)}；绿勾=${/stroke="#22c55e" stroke-width="12"/.test(h)}；` +
+          `秘密图注=${/秘密图（完整还原）/.test(h)}`
+      },
+      {
+        name: '涂黑面积确为约 25%（210×210 / 520×340 = 24.9%）',
+        fn: (h) => /<rect x="155" y="65" width="210" height="210" fill="#05090f"\/>/.test(h),
+        detail: (h) => `涂块 210×210 在 520×340 卡片内 = ${(210 * 210 / (520 * 340) * 100).toFixed(1)}%；` +
+          `标记命中=${/<rect x="155" y="65" width="210" height="210"/.test(h)}`
+      },
+      {
+        name: '导出 PNG 链路完整：XMLSerializer → Blob → Image → canvas(1920×1080) → toBlob → a[download]',
+        fn: (h) => /new XMLSerializer\(\)/.test(h) && /new Blob\(\[str\]/.test(h) &&
+          /new Image\(\)/.test(h) && /c\.width = W; c\.height = H/.test(h) &&
+          /ctx\.drawImage\(img, 0, 0, W, H\)/.test(h) &&
+          /toBlob\(done, 'image\/png'\)/.test(h) && /a\.download = 'RobustStego-cover/.test(h) &&
+          /var W = 1920, H = 1080/.test(h),
+        detail: (h) => `序列化=${/new XMLSerializer\(\)/.test(h)}；Blob=${/new Blob\(\[str\]/.test(h)}；` +
+          `Image=${/new Image\(\)/.test(h)}；canvas 尺寸=${/c\.width = W; c\.height = H/.test(h)}；` +
+          `drawImage=${/ctx\.drawImage\(img, 0, 0, W, H\)/.test(h)}；toBlob=${/toBlob\(done, 'image\/png'\)/.test(h)}；` +
+          `下载文件名=${/a\.download = 'RobustStego-cover/.test(h)}`
+      },
+      {
+        name: '导出前补 xmlns/宽高、剔除安全区图层，且样式写在 SVG 内部（否则导出的 PNG 会丢样式）',
+        fn: (h) => /clone\.setAttribute\('xmlns'/.test(h) && /clone\.setAttribute\('width', W\)/.test(h) &&
+          /guide\.parentNode\.removeChild\(guide\)/.test(h) &&
+          /<svg id="cover"[\s\S]{0,600}?<style>/.test(h),
+        detail: (h) => `补 xmlns=${/clone\.setAttribute\('xmlns'/.test(h)}；补宽高=${/clone\.setAttribute\('width', W\)/.test(h)}；` +
+          `剔除辅助图层=${/guide\.parentNode\.removeChild\(guide\)/.test(h)}；` +
+          `样式在 SVG 内部=${/<svg id="cover"[\s\S]{0,600}?<style>/.test(h)}`
+      },
+      {
+        name: '手机端不溢出：提示文字宽度夹在视口内、stage 允许收缩、页面禁横向滚动',
+        fn: (h) => /max-width: min\(900px, 92vw\)/.test(h) && /overflow-x: hidden/.test(h) &&
+          /min-width: 0/.test(h),
+        detail: (h) => `hint 夹取=${/max-width: min\(900px, 92vw\)/.test(h)}；` +
+          `禁横向滚动=${/overflow-x: hidden/.test(h)}；stage min-width:0=${/min-width: 0/.test(h)}`
+      }
+    ]
+  },
+  {
     // 宣传动画（单文件、零依赖、双击可播放）。它不引入任何核心库，因此 scripts 为空。
     file: 'demo.html',
     useCore: false,
@@ -1245,12 +1349,17 @@ for (const page of PAGES) {
       extLinks.length === 0 ? '未发现计划外的外部 http(s) 链接' : `计划外外部链接=[${extLinks.join(' ')}]`);
   }
 
-  // 7) 宣传动画 demo.html 的体积上限（验收要求 ≤ 300 KB）
+  // 7) 宣传动画 demo.html 与封面 cover.html 的体积上限
   {
     const p = path.join(ROOT, 'demo.html');
     const size = fs.existsSync(p) ? fs.statSync(p).size : -1;
     check('demo.html 体积 ≤ 300 KB（单文件零依赖）', size > 0 && size <= 300 * 1024,
       `${(size / 1024).toFixed(1)} KB（上限 300 KB）`);
+
+    const cp = path.join(ROOT, 'cover.html');
+    const csize = fs.existsSync(cp) ? fs.statSync(cp).size : -1;
+    check('cover.html 体积 ≤ 100 KB（单文件零依赖）', csize > 0 && csize <= 100 * 1024,
+      `${(csize / 1024).toFixed(1)} KB（上限 100 KB）`);
   }
 
   // 8) 改名后的项目名一致性
@@ -1389,11 +1498,45 @@ for (const page of PAGES) {
       `小节=${hasSection}；来源地址=${namesSource}；独立完成声明=${claimsIndependent}；` +
       `标记位置（1.4@${i14} < 1.5@${i15} < 2@${i2}）=${inOrder}`);
   }
+
+  // 11) tech.html 的 §7.3 生成式隐写调研章节（只写文档，不实现）
+  {
+    const tech = readIf('tech.html') || '';
+    const hasSection = /<h3[^>]*>7\.3 生成式隐写/.test(tech);
+    const i72 = tech.search(/<h3[^>]*>7\.2 未来方向<\/h3>/);
+    const i73 = tech.search(/<h3[^>]*>7\.3 生成式隐写/);
+    const i8 = tech.search(/<h2[^>]*>8 结论<\/h2>/);
+    const inOrder = i72 !== -1 && i73 !== -1 && i8 !== -1 && i72 < i73 && i73 < i8;
+    const seg = i73 >= 0 && i8 > i73 ? tech.slice(i73, i8) : '';
+    const textLen = seg.replace(/<[^>]+>/g, '').replace(/\s+/g, '').length;
+    const topics = ['潜在空间', '扩散模型', '训练数据', 'GPU'].every((k) => seg.indexOf(k) !== -1);
+    const notAdopted = /不采用生成式隐写路线/.test(seg);
+    check('tech.html 含 §7.3 生成式隐写章节（§7.2 之后、§8 之前，≥400 字，写明"知道但不做"的三条理由）',
+      hasSection && inOrder && textLen >= 400 && topics && notAdopted,
+      `小节=${hasSection}；位置（7.2@${i72} < 7.3@${i73} < 8@${i8}）=${inOrder}；` +
+      `正文字数=${textLen}（要求 ≥400）；关键点齐全=${topics}；明确不采用=${notAdopted}`);
+  }
+
+  // 12) 参考文献 [6]~[10]：五条齐全、五个方法齐名、对不确定的条目如实标注
+  {
+    const tech = readIf('tech.html') || '';
+    const refStart = tech.search(/<h2[^>]*>9 参考文献<\/h2>/);
+    const refSeg = refStart >= 0 ? tech.slice(refStart) : '';
+    const ids = [6, 7, 8, 9, 10].filter((n) => refSeg.indexOf('[' + n + ']') !== -1);
+    const methods = ['RIS-MoE', 'CRoSS', 'SDMStega', 'MRAS', 'FBstegNet']
+      .filter((m) => refSeg.indexOf(m) !== -1);
+    const citedInText = [6, 7, 8, 9, 10].every((n) => tech.indexOf('[' + n + ']') !== -1);
+    check('参考文献新增 [6]~[10]（五个生成式隐写方法齐名），不确定的作者/年份如实标注"待核实"并声明未复现',
+      ids.length === 5 && methods.length === 5 && citedInText &&
+      /待核实/.test(refSeg) && /未复现/.test(refSeg),
+      `编号=[${ids.join(', ')}]；方法名=[${methods.join(', ')}]；正文引用齐全=${citedInText}；` +
+      `如实标注待核实=${/待核实/.test(refSeg)}；声明未复现=${/未复现/.test(refSeg)}`);
+  }
 }
 
 {
   const libs = ['js/image-utils.js', 'js/dct-stego.js', 'js/packet.js', 'js/raptorq.js',
-    'js/geo-calibration.js', 'js/stego-core.js', 'js/carrier-generator.js', 'js/test-suite.js'];
+    'js/geo-calibration.js', 'js/stego-core.js', 'js/zip-pack.js', 'js/carrier-generator.js', 'js/test-suite.js'];
   // 允许的跨文件名字：确实由别处挂到全局、且以裸名被调用的（当前为空）
   const CROSS_FILE_ALLOW = new Set();
   const rows = [];
@@ -1413,7 +1556,7 @@ for (const page of PAGES) {
 // ============================================================
 {
   const libs = ['js/image-utils.js', 'js/dct-stego.js', 'js/packet.js', 'js/raptorq.js',
-    'js/geo-calibration.js', 'js/stego-core.js', 'js/carrier-generator.js', 'js/test-suite.js'];
+    'js/geo-calibration.js', 'js/stego-core.js', 'js/zip-pack.js', 'js/carrier-generator.js', 'js/test-suite.js'];
   const rows = [];
   let bad = 0;
   for (const f of libs) {

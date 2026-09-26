@@ -97,20 +97,20 @@
 
 <main>
   <h1>上传一张被隐写的图片，还原其中的秘密图</h1>
-  <p class="lead">请上传别人发给你的隐写图（记得让对方用"原图/文件"方式发送，收到时也要按原图保存）。转发过、压缩过的图也可以试试，程序会自动尽力修复。</p>
+  <p class="lead">请上传别人发给你的隐写图（记得让对方用"原图/文件"方式发送，收到时也要按原图保存）。转发过、压缩过的图也可以试试，程序会自动尽力修复。<b>支持上传隐写图，或包含隐写图的 ZIP 文件</b>——对方用嵌入页的"下载为 ZIP"发来的就是后者，上传后会自动解压再提取。</p>
 
   <!-- 1. 选图 -->
   <div class="panel">
-    <h2>第 1 步：选择图片</h2>
+    <h2>第 1 步：选择图片或 ZIP</h2>
     <label class="pick" for="stegoFile">
-      <b>选择要还原的图片</b>
-      <span>就是那张看起来普通、其实藏着秘密图的图片；请用收到的原始文件，不要用截图</span>
+      <b>选择要还原的图片（或 ZIP）</b>
+      <span>就是那张看起来普通、其实藏着秘密图的图片；也可以是含该图片的 .zip 文件。请用收到的原始文件，不要用截图</span>
     </label>
-    <input id="stegoFile" type="file" accept="image/*">
+    <input id="stegoFile" type="file" accept="image/*,.zip,application/zip">
     <div class="hint" id="inputHint">尚未选择</div>
     <canvas id="inputThumb" class="thumb hidden"></canvas>
     <div class="meta" id="inputMeta"></div>
-    <div class="ready" id="inputReady">选择一张图片后即可开始</div>
+    <div class="ready" id="inputReady">选择一张图片或 ZIP 后即可开始</div>
   </div>
 
   <!-- 2. 提取 -->
@@ -174,6 +174,7 @@
 <script src="js/raptorq.js"></script>
 <script src="js/geo-calibration.js"></script>
 <script src="js/stego-core.js"></script>
+<script src="js/zip-pack.js"></script>
 <script>
 (function () {
   'use strict';
@@ -268,24 +269,110 @@
     return { normal: normal, phase: phase, scale: scale, brief: brief };
   }
 
-  // ---------- 上传 ----------
+  // ---------- 上传（支持图片，也支持含图片的 ZIP） ----------
+  //
+  // 为什么支持 ZIP：平台只对"图片"重编码，对"文件"原样转发。发送方在嵌入页导出
+  // ZIP 后用"发送文件"发给对方，接收方直接把 ZIP 拖进来即可——省掉"先解压再上传"这一步。
+  var ZIP_IMAGE_RE = /\.(png|jpe?g|webp|bmp|gif)$/i;
+
+  /** 从 ZIP 里挑出最可能是隐写图的那一个：优先 .png，其次其它图片扩展名，最后兜底第一个 */
+  function pickImageFromZip(files) {
+    var i;
+    for (i = 0; i < files.length; i++) if (/\.png$/i.test(files[i].name)) return files[i];
+    for (i = 0; i < files.length; i++) if (ZIP_IMAGE_RE.test(files[i].name)) return files[i];
+    for (i = 0; i < files.length; i++) if (!/\/$/.test(files[i].name) && files[i].bytes.length > 0) return files[i];
+    return null;
+  }
+
+  /** ZIP 字节 → 挑出图片 → 包成 Blob，交给后面统一的"载入图片"流程 */
+  function fileFromZip(zipBytes, zipName) {
+    if (!window.ZipPack) throw new Error('ZIP 模块未加载：请确认 js/zip-pack.js 与 extract.html 在同一目录');
+    var files = window.ZipPack.unpack(zipBytes);
+    if (!files.length) throw new Error('ZIP 里没有文件');
+    var pick = pickImageFromZip(files);
+    if (!pick) throw new Error('ZIP 里没有找到图片文件（共 ' + files.length + ' 个条目）');
+    var ext = (pick.name.match(/\.([A-Za-z0-9]+)$/) || [null, 'png'])[1].toLowerCase();
+    var type = ext === 'jpg' || ext === 'jpeg' ? 'image/jpeg'
+      : (ext === 'webp' ? 'image/webp' : (ext === 'bmp' ? 'image/bmp'
+        : (ext === 'gif' ? 'image/gif' : 'image/png')));
+    return {
+      blob: new Blob([pick.bytes], { type: type }),
+      label: zipName + ' → ' + pick.name,
+      inner: pick.name,
+      count: files.length
+    };
+  }
+
   $('stegoFile').addEventListener('change', function (e) {
     var f = e.target.files && e.target.files[0];
     if (!f) return;
-    window.ImageUtils.loadImage(f).then(function (img) {
-      var data = window.ImageUtils.getImageData(img);
-      state.input = data;
-      drawThumb($('inputThumb'), data);
-      $('inputThumb').classList.remove('hidden');
-      $('inputHint').classList.add('hidden');
-      $('inputMeta').textContent = f.name + ' ｜ ' + data.width + ' × ' + data.height + ' 像素';
-      $('inputReady').className = 'ready ok';
-      $('inputReady').textContent = '已就绪，点击下方按钮开始';
-      $('extractBtn').disabled = false;
-      setStatus('');
-    }).catch(function (err) {
-      alert('图片载入失败：' + err.message);
-    });
+    var name = f.name || '';
+
+    // 1) 先读前 4 字节判断魔数：ZIP 的本地文件头是 50 4B 03 04
+    var head = f.slice(0, 4);
+    var headReader = new FileReader();
+    var fallbackToZipByName = function (isZipByName) {
+      // FileReader 不可用（极老环境）时按扩展名兜底
+      if (isZipByName) {
+        var whole = new FileReader();
+        whole.onload = function () {
+          try { handleDecoded(fileFromZip(new Uint8Array(whole.result), name)); }
+          catch (err) { alert('ZIP 解析失败：' + err.message); }
+        };
+        whole.onerror = function () { alert('文件读取失败，请重试。'); };
+        whole.readAsArrayBuffer(f);
+      } else {
+        loadImageFile(f, name);
+      }
+    };
+    if (typeof headReader.readAsArrayBuffer !== 'function') {
+      fallbackToZipByName(/\.zip$/i.test(name));
+      return;
+    }
+    headReader.onload = function () {
+      var bytes = new Uint8Array(headReader.result || []);
+      var isZipMagic = bytes.length >= 4 && bytes[0] === 0x50 && bytes[1] === 0x4B &&
+        bytes[2] === 0x03 && bytes[3] === 0x04;
+      if (!isZipMagic) { loadImageFile(f, name); return; }
+      setStatus('检测到 ZIP，正在解压…');
+      var reader = new FileReader();
+      reader.onload = function () {
+        try {
+          var info = fileFromZip(new Uint8Array(reader.result), name);
+          if (info.count > 1) setStatus('ZIP 内有 ' + info.count + ' 个条目，已取用 ' + info.inner + '。');
+          loadImageFile(info.blob, info.label, info.inner);
+        } catch (err) {
+          setStatus('');
+          alert('ZIP 解析失败：' + err.message);
+        }
+      };
+      reader.onerror = function () { setStatus(''); alert('ZIP 读取失败，请重试。'); };
+      reader.readAsArrayBuffer(f);
+    };
+    headReader.onerror = function () { loadImageFile(f, name); };
+    headReader.readAsArrayBuffer(head);
+
+    /** 统一入口：不管是直接上传的图片，还是从 ZIP 里取出来的图片，都走这里 */
+    function loadImageFile(blobOrFile, label, innerName) {
+      window.ImageUtils.loadImage(blobOrFile).then(function (img) {
+        var data = window.ImageUtils.getImageData(img);
+        state.input = data;
+        drawThumb($('inputThumb'), data);
+        $('inputThumb').classList.remove('hidden');
+        $('inputHint').classList.add('hidden');
+        $('inputMeta').textContent = label + ' ｜ ' + data.width + ' × ' + data.height + ' 像素' +
+          (innerName ? '（ZIP 内文件：' + innerName + '）' : '');
+        $('inputReady').className = 'ready ok';
+        $('inputReady').textContent = '已就绪，点击下方按钮开始';
+        $('extractBtn').disabled = false;
+        setStatus('');
+      }).catch(function (err) {
+        alert('图片载入失败：' + err.message);
+      });
+    }
+
+    /** 解出 ZIP 后的统一处理 */
+    function handleDecoded(info) { loadImageFile(info.blob, info.label, info.inner); }
   });
 
   // ---------- 进度 ----------

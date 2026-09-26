@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RobustStego 视频封面（1920×1080）</title>
+<meta name="description" content="RobustStego 抗干扰图片隐写工具的宣传封面：1920×1080 内联 SVG，可一键导出 PNG 上传 B 站。">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%2322c55e'/><path d='M7 17l6 6L25 9' fill='none' stroke='%23fff' stroke-width='4' stroke-linecap='round' stroke-linejoin='round'/></svg>">
+<style>
+  /* ============================================================
+     cover.html —— B 站视频封面（1920×1080 内联 SVG + 一键导出 PNG）
+     ------------------------------------------------------------
+     设计取舍：
+       1. 封面本体的全部样式都写在 SVG **内部** 的 <style> 里。
+          为什么：导出 PNG 的流程是"把 SVG 序列化成字符串 → 塞进 <img> → 画到 canvas"，
+          此时页面级的 CSS 不会跟着走。样式放在 SVG 内部才会被一起序列化，
+          否则导出的 PNG 会丢掉字体大小、颜色、圆角等全部样式（这是这类导出最常见的坑）。
+       2. 只允许两类外部依赖风险：字体（用系统字体名）与位图（一张都不用，全是 SVG 图元）。
+       3. 主要内容压在画面中央的"安全区"内，B 站按 16:9 裁切或压成缩略图都不会丢信息。
+     ============================================================ */
+  html, body {
+    margin: 0; height: 100%; background: #070c16; color: #e2e8f0;
+    font: 15px/1.6 system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  .wrap { min-height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 18px; box-sizing: border-box; }
+  .stage { width: 100%; max-width: 1600px; min-width: 0; }
+  #cover { width: 100%; height: auto; display: block; border-radius: 10px; box-shadow: 0 18px 50px rgba(0,0,0,.55); }
+  .bar { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; justify-content: center; }
+  button {
+    font: 600 16px/1 system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+    color: #06210f; background: #22c55e; border: 0; border-radius: 10px;
+    padding: 14px 26px; cursor: pointer;
+  }
+  button:hover { filter: brightness(1.08); }
+  button:active { transform: translateY(1px); }
+  button[disabled] { opacity: .55; cursor: default; }
+  label.chk { display: inline-flex; align-items: center; gap: 7px; color: #93a4c0; font-size: 14px; cursor: pointer; }
+  /* 关键：宽度必须夹在视口内。只写 max-width:900px 时，flex 列里的这一项会按内容撑开
+     （shrink-to-fit），在手机上直接把页面顶出横向滚动条。 */
+  .hint { color: #7d8ea9; font-size: 13px; text-align: center; width: 100%; max-width: min(900px, 92vw); }
+  .hint b { color: #93a4c0; font-weight: 600; }
+  #msg { color: #86efac; font-size: 13.5px; min-height: 20px; text-align: center; }
+  #msg.err { color: #fca5a5; }
+  body { overflow-x: hidden; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="stage">
+    <!-- ===================== 封面本体（1920×1080） =====================
+         注意：内联 svg 上**不写** width/height 属性，只留 viewBox。
+         写了 width="1920" 之后，这个 svg 的 min-content 宽度就是 1920，
+         在手机上（flex 交叉轴不会压到 min-content 以下）会把页面顶出横向滚动条。
+         导出 PNG 时由脚本给克隆体补上 width/height=1920/1080。 -->
+    <svg id="cover" viewBox="0 0 1920 1080"
+         preserveAspectRatio="xMidYMid meet" role="img"
+         aria-label="RobustStego 抗干扰图片隐写工具：涂黑一半，也能还原">
+      <title>RobustStego 抗干扰图片隐写工具 —— 涂黑一半，也能还原</title>
+      <desc>左侧是一张被黑色矩形涂黑约四分之一面积的载体图，红色虚线标出损坏区域；
+            中间箭头表示提取；右侧是带绿色对勾的秘密图缩略图，表示完整还原。</desc>
+
+      <!-- 封面内部样式：必须写在 SVG 里，导出 PNG 时才会被一起序列化 -->
+      <style>
+        .bg-a { stop-color: #0f172a; } .bg-b { stop-color: #1e293b; }
+        .title { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+                 font-size: 118px; font-weight: 800; letter-spacing: 2px; }
+        .t-white { fill: #f8fafc; } .t-green { fill: #22c55e; }
+        .subtitle { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+                    font-size: 43px; font-weight: 500; fill: #9fb0c9; letter-spacing: 1px; }
+        .bottom { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+                  font-size: 34px; fill: #6b7c96; letter-spacing: 3px; }
+        .cap { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+               font-size: 30px; font-weight: 600; }
+        .cap-grey { fill: #93a4c0; } .cap-red { fill: #f87171; } .cap-green { fill: #4ade80; }
+        .arrow-label { font-family: system-ui, -apple-system, "PingFang SC", "Microsoft YaHei", sans-serif;
+                       font-size: 34px; font-weight: 700; fill: #38bdf8; letter-spacing: 2px; }
+        .card { fill: #111c33; stroke: #2a3b55; stroke-width: 3; }
+        .card-ok { fill: #0e2a1b; stroke: #22c55e; stroke-width: 4; }
+        /* 描边专用类：注意不能用 .card + fill="none" —— CSS 类的优先级高于
+           表现属性（presentation attribute），那样画出来的仍是实心色块，
+           会把卡片里的纹理整个盖住（第一版封面就是这么变成一块黑板的）。 */
+        .outline { fill: none; stroke: #2a3b55; stroke-width: 3; }
+        .guide { fill: none; stroke: #f59e0b; stroke-width: 3; stroke-dasharray: 14 10; }
+        .guide-t { font-family: system-ui, "PingFang SC", "Microsoft YaHei", sans-serif;
+                   font-size: 26px; fill: #f59e0b; }
+      </style>
+
+      <defs>
+        <linearGradient id="gBg" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" class="bg-a"/><stop offset="1" class="bg-b"/>
+        </linearGradient>
+        <radialGradient id="gGlow" cx="0.5" cy="0.62" r="0.55">
+          <stop offset="0" stop-color="#38bdf8" stop-opacity="0.16"/>
+          <stop offset="1" stop-color="#38bdf8" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="gSky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#1b3a63"/><stop offset="0.6" stop-color="#4a7bab"/><stop offset="1" stop-color="#9dc0dd"/>
+        </linearGradient>
+        <linearGradient id="gWater" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0" stop-color="#2b4f74"/><stop offset="1" stop-color="#14263c"/>
+        </linearGradient>
+        <linearGradient id="gArrow" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0" stop-color="#38bdf8" stop-opacity="0.35"/><stop offset="1" stop-color="#38bdf8"/>
+        </linearGradient>
+        <linearGradient id="gSecret" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#123043"/><stop offset="1" stop-color="#0d2233"/>
+        </linearGradient>
+        <filter id="fShadow" x="-20%" y="-30%" width="140%" height="180%">
+          <feDropShadow dx="0" dy="6" stdDeviation="10" flood-color="#000" flood-opacity="0.55"/>
+        </filter>
+        <filter id="fGreen" x="-40%" y="-40%" width="180%" height="180%">
+          <feDropShadow dx="0" dy="0" stdDeviation="14" flood-color="#22c55e" flood-opacity="0.65"/>
+        </filter>
+        <clipPath id="clipCardA"><rect x="0" y="0" width="520" height="340" rx="16"/></clipPath>
+        <clipPath id="clipCardB"><rect x="0" y="0" width="520" height="340" rx="16"/></clipPath>
+      </defs>
+
+      <!-- ============ 背景 ============ -->
+      <rect x="0" y="0" width="1920" height="1080" fill="url(#gBg)"/>
+      <rect x="0" y="0" width="1920" height="1080" fill="url(#gGlow)"/>
+      <!-- 四角细线：极低对比度的科技感装饰，不干扰阅读 -->
+      <g stroke="#38bdf8" stroke-opacity="0.16" stroke-width="2" fill="none">
+        <path d="M60,60 H240 M60,60 V200"/>
+        <path d="M1860,60 H1680 M1860,60 V200"/>
+        <path d="M60,1020 H240 M60,1020 V880"/>
+        <path d="M1860,1020 H1680 M1860,1020 V880"/>
+      </g>
+      <g fill="#38bdf8" fill-opacity="0.10">
+        <circle cx="150" cy="540" r="4"/><circle cx="150" cy="580" r="4"/><circle cx="150" cy="620" r="4"/>
+        <circle cx="1770" cy="540" r="4"/><circle cx="1770" cy="580" r="4"/><circle cx="1770" cy="620" r="4"/>
+      </g>
+
+      <!-- ============ 主标题 / 副标题 ============ -->
+      <!-- 标题用**一个** <text> + 两个 <tspan>：这样 text-anchor="middle" 会把整句
+           一起居中，不会因为手工给两段各自定 x 而出现重叠或缝隙（字体宽度不可预知）。 -->
+      <g filter="url(#fShadow)">
+        <text class="title" x="960" y="300" text-anchor="middle"><tspan class="t-white">涂黑一半，</tspan><tspan class="t-green">也能还原</tspan></text>
+      </g>
+      <text class="subtitle" x="960" y="382" text-anchor="middle">RobustStego · 抗干扰图片隐写工具</text>
+
+      <!-- ============ 左侧：被涂黑 25% 的载体图 ============ -->
+      <g transform="translate(258,470)">
+        <rect class="card" x="0" y="0" width="520" height="340" rx="16"/>
+        <g clip-path="url(#clipCardA)">
+          <!-- 抽象纹理：天空 / 太阳 / 山峦 / 水面，全部用几何图元拼出来 -->
+          <rect x="0" y="0" width="520" height="340" fill="url(#gSky)"/>
+          <circle cx="404" cy="86" r="36" fill="#ffe9b0" fill-opacity="0.95"/>
+          <circle cx="404" cy="86" r="60" fill="#ffe9b0" fill-opacity="0.16"/>
+          <polygon points="0,232 108,132 196,214 292,110 392,216 476,166 520,196 520,268 0,268" fill="#22354f"/>
+          <polygon points="0,254 96,198 196,252 300,196 404,248 520,206 520,272 0,272" fill="#16283d" fill-opacity="0.92"/>
+          <rect x="0" y="268" width="520" height="72" fill="url(#gWater)"/>
+          <g stroke="#cfe4f7" stroke-opacity="0.30" stroke-width="2">
+            <path d="M52,296 H150"/><path d="M210,314 H340"/><path d="M362,290 H482"/><path d="M96,330 H246"/>
+          </g>
+          <!-- 细网格：暗示"分块承载"，很淡，不抢主体 -->
+          <g stroke="#e2e8f0" stroke-opacity="0.10" stroke-width="1">
+            <path d="M65,0 V340 M130,0 V340 M195,0 V340 M260,0 V340 M325,0 V340 M390,0 V340 M455,0 V340"/>
+            <path d="M0,68 H520 M0,136 H520 M0,204 H520 M0,272 H520"/>
+          </g>
+        </g>
+        <!-- 涂黑区域：210×210 / (520×340) = 24.9%，即"约 25%" -->
+        <rect x="155" y="65" width="210" height="210" fill="#05090f"/>
+        <rect x="155" y="65" width="210" height="210" fill="none" stroke="#ef4444" stroke-width="5" stroke-dasharray="16 10"/>
+        <rect class="outline" x="0" y="0" width="520" height="340" rx="16"/>
+
+        <!-- 损坏标注：红色胶囊 + 引出线 -->
+        <g transform="translate(258,-46)">
+          <rect x="-108" y="-30" width="216" height="60" rx="30" fill="#2a1116" stroke="#ef4444" stroke-width="3"/>
+          <text class="cap cap-red" x="0" y="11" text-anchor="middle">损坏 25%</text>
+        </g>
+        <path d="M258,-16 V62" stroke="#ef4444" stroke-width="3" stroke-dasharray="8 6"/>
+        <text class="cap cap-grey" x="260" y="386" text-anchor="middle">载体图（局部被涂改）</text>
+      </g>
+
+      <!-- ============ 中间：提取箭头 ============ -->
+      <g transform="translate(830,600)">
+        <text class="arrow-label" x="130" y="-52" text-anchor="middle">提取</text>
+        <rect x="0" y="14" width="200" height="26" rx="13" fill="url(#gArrow)"/>
+        <polygon points="200,0 262,27 200,54" fill="#38bdf8"/>
+        <text class="cap cap-grey" x="130" y="104" text-anchor="middle" font-size="26">另一边收到图</text>
+      </g>
+
+      <!-- ============ 右侧：完整还原的秘密图 ============ -->
+      <g transform="translate(1142,470)">
+        <rect class="card-ok" x="0" y="0" width="520" height="340" rx="16"/>
+        <g clip-path="url(#clipCardB)">
+          <rect x="0" y="0" width="520" height="340" fill="url(#gSecret)"/>
+          <!-- 秘密图：一页"机密文档" -->
+          <rect x="150" y="46" width="220" height="248" rx="10" fill="#e8eefc" fill-opacity="0.95"/>
+          <g fill="#8fa3bd">
+            <rect x="176" y="84" width="168" height="12" rx="6"/>
+            <rect x="176" y="114" width="126" height="11" rx="5"/>
+            <rect x="176" y="142" width="150" height="11" rx="5"/>
+            <rect x="176" y="170" width="98" height="11" rx="5"/>
+            <rect x="176" y="198" width="140" height="11" rx="5"/>
+          </g>
+          <g transform="translate(292,252)">
+            <circle r="34" fill="none" stroke="#ef4444" stroke-width="4" stroke-opacity="0.9"/>
+            <text x="0" y="8" text-anchor="middle" font-size="24" font-weight="700" fill="#ef4444"
+                  font-family="system-ui, 'PingFang SC', 'Microsoft YaHei', sans-serif">机密</text>
+          </g>
+          <!-- 大对勾：表示"完整还原" -->
+          <g transform="translate(430,104)" filter="url(#fGreen)">
+            <circle r="62" fill="#052e16" stroke="#22c55e" stroke-width="6"/>
+          </g>
+          <g transform="translate(430,104)">
+            <path d="M-30,2 L-10,22 L32,-22" fill="none" stroke="#22c55e" stroke-width="12"
+                  stroke-linecap="round" stroke-linejoin="round"/>
+          </g>
+        </g>
+        <text class="cap cap-green" x="260" y="386" text-anchor="middle">秘密图（完整还原）</text>
+      </g>
+
+      <!-- ============ 底部小字 ============ -->
+      <text class="bottom" x="960" y="985" text-anchor="middle">纯前端 · 零依赖 · 浏览器本地运行</text>
+
+      <!-- ============ 安全区提示（默认隐藏，导出 PNG 时会被剔除） ============ -->
+      <g id="safeGuide" style="display:none">
+        <rect class="guide" x="192" y="108" width="1536" height="864"/>
+        <text class="guide-t" x="200" y="100">安全区（B 站裁切预览，可关闭）</text>
+      </g>
+    </svg>
+  </div>
+
+  <div class="bar">
+    <button id="dl" type="button">下载 PNG（1920×1080）</button>
+    <label class="chk"><input type="checkbox" id="guide"> 显示安全区（检查 B 站裁切）</label>
+  </div>
+  <div id="msg"></div>
+  <div class="hint">
+    导出尺寸 <b>1920×1080</b>，可直接上传 B 站；B 站会等比缩放到 1146×717，本封面的主标题、
+    图标与三栏示意都压在中央安全区内，缩放与裁切后仍可读。手机上横屏查看更清楚。
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   导出 PNG：SVG 字符串 → <img> → canvas → PNG
+   ------------------------------------------------------------
+   三个关键点（缺一个就会导出成空白或错样式）：
+     1. 序列化前给克隆节点补上 xmlns 与明确的 width/height —— 缺 xmlns 时
+        浏览器不会把它当成合法 SVG 图片，<img> 会直接加载失败；
+     2. 封面样式写在 SVG 内部的 <style> 里，因此会随序列化一起带走，
+        不依赖页面级 CSS（页面 CSS 在 <img> 渲染时不生效）；
+     3. 导出用的克隆体里删掉"安全区"辅助图层，避免把编辑参考线画进成品。
+   ============================================================ */
+(function () {
+  'use strict';
+  var $ = function (id) { return document.getElementById(id); };
+  var W = 1920, H = 1080;
+
+  /** 生成"可独立渲染"的 SVG 字符串 */
+  function buildSvgString() {
+    var svg = $('cover');
+    var clone = svg.cloneNode(true);
+    clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+    clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+    clone.setAttribute('width', W);
+    clone.setAttribute('height', H);
+    clone.removeAttribute('style');
+    clone.removeAttribute('class');
+    var guide = clone.querySelector('#safeGuide');
+    if (guide && guide.parentNode) guide.parentNode.removeChild(guide);
+    // 复选框状态不会带进克隆体，这里确保安全区在导出件里一定是隐藏的
+    return '<?xml version="1.0" encoding="UTF-8"?>\n' + new XMLSerializer().serializeToString(clone);
+  }
+
+  /** 把 SVG 画进 canvas，回调 canvas（这一步也顺便验证了"能正确光栅化"） */
+  function renderToCanvas(cb, onErr) {
+    var str = buildSvgString();
+    var blob = new Blob([str], { type: 'image/svg+xml;charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var img = new Image();
+    img.onload = function () {
+      try {
+        var c = document.createElement('canvas');
+        c.width = W; c.height = H;
+        var ctx = c.getContext('2d');
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, W, H);
+        ctx.drawImage(img, 0, 0, W, H);
+        URL.revokeObjectURL(url);
+        cb(c);
+      } catch (e) {
+        URL.revokeObjectURL(url);
+        onErr(e);
+      }
+    };
+    img.onerror = function () {
+      URL.revokeObjectURL(url);
+      onErr(new Error('SVG 无法被浏览器加载为图片（可能是序列化字符串不合法）'));
+    };
+    img.src = url;
+  }
+
+  function setMsg(text, isErr) {
+    var el = $('msg');
+    el.textContent = text || '';
+    el.className = isErr ? 'err' : '';
+  }
+
+  /** 真正的下载：canvas → PNG Blob → <a download> */
+  function download() {
+    var btn = $('dl');
+    btn.disabled = true;
+    setMsg('正在生成 PNG…');
+    renderToCanvas(function (canvas) {
+      var done = function (blob) {
+        btn.disabled = false;
+        if (!blob) { setMsg('导出失败：浏览器没有返回 PNG 数据。', true); return; }
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'RobustStego-cover-1920x1080.png';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        setTimeout(function () { URL.revokeObjectURL(a.href); }, 4000);
+        setMsg('已导出 RobustStego-cover-1920x1080.png（' +
+          (blob.size / 1024).toFixed(0) + ' KB）');
+      };
+      if (canvas.toBlob) {
+        canvas.toBlob(done, 'image/png');
+      } else {
+        // 极老浏览器兜底：dataURL 转 Blob
+        try {
+          var b64 = canvas.toDataURL('image/png').split(',')[1];
+          var bin = atob(b64), arr = new Uint8Array(bin.length);
+          for (var i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+          done(new Blob([arr], { type: 'image/png' }));
+        } catch (e) { btn.disabled = false; setMsg('导出失败：' + e.message, true); }
+      }
+    }, function (e) {
+      $('dl').disabled = false;
+      setMsg('导出失败：' + e.message + '（若用 file:// 打开，可换 http:// 或直接截图）', true);
+    });
+  }
+
+  $('dl').addEventListener('click', download);
+  $('guide').addEventListener('change', function () {
+    $('safeGuide').style.display = this.checked ? '' : 'none';
+  });
+
+  /* ---- 开发用：?metrics=1 打印真实布局尺寸（校验手机端不溢出时用） ---- */
+  if (/[?&]metrics=1/.test(location.search)) {
+    var box = function (sel) {
+      var el = document.querySelector(sel);
+      if (!el) return sel + '=缺失';
+      var r = el.getBoundingClientRect();
+      return sel + '=' + r.width.toFixed(1) + 'x' + r.height.toFixed(1) + '@' + r.left.toFixed(1);
+    };
+    var pre0 = document.createElement('pre');
+    pre0.id = 'metricsOut';
+    pre0.textContent = 'METRICS innerWidth=' + window.innerWidth +
+      ' docScrollWidth=' + document.documentElement.scrollWidth +
+      ' bodyScrollWidth=' + document.body.scrollWidth +
+      ' dpr=' + window.devicePixelRatio + '\n' +
+      [box('.wrap'), box('.stage'), box('#cover'), box('.hint'), box('button')].join('\n');
+    document.body.appendChild(pre0);
+    document.title = 'metrics-done';
+  }
+
+  /* ---- 开发用：?export=1 直接把 PNG 的 dataURL 写进 DOM，便于自动化校验导出结果 ----
+         ?export=1&guide=1 会**先打开安全区图层再导出**，用来验证辅助线不会被画进成品。 */
+  if (/[?&]export=1/.test(location.search)) {
+    if (/[?&]guide=1/.test(location.search)) {
+      $('guide').checked = true;
+      $('safeGuide').style.display = '';
+    }
+    renderToCanvas(function (canvas) {
+      var pre = document.createElement('pre');
+      pre.id = 'exportOut';
+      try {
+        var d = canvas.toDataURL('image/png');
+        pre.textContent = 'PNG ' + canvas.width + 'x' + canvas.height +
+          ' bytes=' + Math.round((d.length - d.indexOf(',') - 1) * 3 / 4) + '\n' + d;
+      } catch (e) {
+        pre.textContent = 'EXPORT_ERROR ' + e.message;
+      }
+      document.body.appendChild(pre);
+      document.title = 'export-done';
+    }, function (e) {
+      var pre = document.createElement('pre');
+      pre.id = 'exportOut';
+      pre.textContent = 'EXPORT_ERROR ' + e.message;
+      document.body.appendChild(pre);
+    });
+  }
+})();
+</script>
+</body>
+</html>
